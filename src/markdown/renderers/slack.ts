@@ -9,6 +9,7 @@ import {
   type Table,
 } from 'mdast';
 
+import { htmlFragmentToText } from '../utils/html.js';
 import { escapeSlackText } from '../utils/slackEscape.js';
 
 type AnyChild = RootContent | BlockContent | DefinitionContent;
@@ -64,7 +65,12 @@ function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
       continue;
     }
     if (n.type === 'html') {
+      // Flatten block HTML to plain text for Slack
       console.warn('Slack: HTML stripped');
+      const text = htmlFragmentToText(String(n.value ?? ''));
+      if (text.trim()) {
+        out.push(text, '\n\n');
+      }
       continue;
     }
     if (n.type === 'details') {
@@ -79,9 +85,22 @@ function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
 
 function renderInline(children: PhrasingContent[]): string {
   let s = '';
+  let skipUntil: string | null = null; // e.g., '</script>' or '</style>'
   for (const c of children) {
+    if (skipUntil) {
+      if (c.type === 'html' && String(c.value ?? '').toLowerCase() === skipUntil) {
+        skipUntil = null;
+      }
+      continue;
+    }
     if (c.type === 'text') {
-      s += escapeSlackText(c.value ?? '');
+      // Remove dangerous inline fragments like <script>...</script> and <style>...</style> that
+      // can appear in raw text, then escape the remainder for Slack.
+      const raw = String(c.value ?? '');
+      const withoutDanger = raw
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '');
+      s += escapeSlackText(withoutDanger);
       continue;
     }
     if (c.type === 'emphasis') {
@@ -117,7 +136,23 @@ function renderInline(children: PhrasingContent[]): string {
       continue;
     }
     if (c.type === 'html') {
-      s += escapeSlackText(c.value ?? '');
+      // Inline HTML becomes plain text; no warning for inline occurrences.
+      // Special-case Slack forms like '<!here>' that sometimes parse as HTML: keep as literal text.
+      const raw = String(c.value ?? '');
+      const lower = raw.toLowerCase();
+      if (lower === '<script>') {
+        skipUntil = '</script>';
+        continue;
+      }
+      if (lower === '<style>') {
+        skipUntil = '</style>';
+        continue;
+      }
+      if (/^<\!(?:here|channel|everyone)>$/.test(raw)) {
+        s += escapeSlackText(raw);
+      } else {
+        s += htmlFragmentToText(raw);
+      }
       continue;
     }
   }

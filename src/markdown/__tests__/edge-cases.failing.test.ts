@@ -15,12 +15,12 @@ describe('edge cases (documented failures)', () => {
     'autolinks: still apply when earlier fragments (e.g., Slack link) exist'
   );
 
-  test('Linear HTML allowlist: mixed allowed + disallowed tags should be stripped', async () => {
+  test('Linear HTML allowlist: mixed allowed + disallowed tags are sanitized', async () => {
     const input = '<u>ok</u><blink>nope</blink>';
     const out = await formatFor(input, 'linear', { linearHtmlAllow: ['u'] });
-    // If any disallowed tag appears in the same HTML node, the whole paragraph should be removed.
+    // Disallowed tag content is unwrapped/removed; allowed tag preserved.
     expect(out).not.toMatch(/<blink>|nope/);
-    expect(out).not.toContain('ok');
+    expect(out).toContain('<u>ok</u>');
   });
 
   test.fails(

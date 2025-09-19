@@ -1,0 +1,18 @@
+*HTML handling: mixed cases*
+
+Inline: foo &amp; bar u and 2/n with 
+line break.
+
+Block with u and bad
+next line
+
+Comments: ok.
+
+Attributes: styled and x and click.
+
+Disallowed dangerous:  mid and end.
+
+More
+
+Line 1 u
+

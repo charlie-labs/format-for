@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import { formatFor } from '../../index.js';
 
-describe('Linear HTML allowlist (strict)', () => {
+describe('Linear HTML allowlist (sanitize/unwrap)', () => {
   test('keeps paragraph with only allowed tags', async () => {
     const input = '<u>keep</u><br />and more';
     const out = await formatFor(input, 'linear', {
@@ -19,7 +19,7 @@ describe('Linear HTML allowlist (strict)', () => {
     expect(out).toContain('<!-- a comment -->');
   });
 
-  test('strips the entire paragraph when any disallowed tag appears and preserves siblings', async () => {
+  test('unwraps disallowed tags and preserves siblings', async () => {
     const input = [
       'before',
       '',
@@ -28,9 +28,9 @@ describe('Linear HTML allowlist (strict)', () => {
       'after',
     ].join('\n');
     const out = await formatFor(input, 'linear', { linearHtmlAllow: ['u'] });
-    // Middle paragraph removed entirely
+    // Middle paragraph is kept; script removed; allowed tag preserved
     expect(out).not.toMatch(/<script>|nope\(\)/);
-    expect(out).not.toContain('ok');
+    expect(out).toContain('<u>ok</u>');
     // Adjacent paragraphs remain
     expect(out).toMatch(/before/);
     expect(out).toMatch(/after/);

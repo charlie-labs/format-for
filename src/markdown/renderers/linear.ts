@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { type Html, type Paragraph, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
 import remarkStringify from 'remark-stringify';
@@ -6,6 +5,7 @@ import { unified } from 'unified';
 import { SKIP, visit } from 'unist-util-visit';
 
 import { type DetailsNode, type MentionNode } from '../types.js';
+import { sanitizeForLinear } from '../utils/html.js';
 
 export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
   const cloned: Root = structuredClone(ast);
@@ -57,37 +57,10 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     }
   );
 
-  // Strip disallowed HTML that appears inside a paragraph by removing the
-  // entire paragraph node. This ensures mixed allowed+disallowed HTML does not
-  // partially leak through as plain text.
-  visit(
-    cloned,
-    'paragraph',
-    (
-      node: Paragraph,
-      index: number | undefined,
-      parent: Parent | undefined
-    ) => {
-      if (!parent || typeof index !== 'number') return;
-      const hasDisallowedHtml = node.children.some((child) => {
-        if (child?.type !== 'html') return false;
-        const v = String(child.value);
-        const tags = extractHtmlTags(v);
-        // Only paragraphs containing real, disallowed tags trigger full-paragraph removal
-        return tags.size > 0 && !isAllowedHtml(v, opts.allowHtml);
-      });
-      if (hasDisallowedHtml) {
-        console.warn('Linear: HTML paragraph stripped');
-        parent.children.splice(index, 1);
-        // Continue at the same index so we don't skip the next sibling.
-        return [SKIP, index];
-      }
-    }
-  );
-
-  // Also strip disallowed standalone HTML nodes (not inside paragraphs), and
-  // strip inline HTML with no real tags (e.g., Slack forms like `<!here>`) while
-  // keeping the rest of the paragraph intact.
+  // Sanitize HTML nodes in-place:
+  // - Inline HTML with no real tags (e.g., Slack '<!here>'): drop the node
+  // - Allowed tags preserved; attributes stripped; disallowed tags unwrapped
+  // - script/style contents removed entirely
   visit(
     cloned,
     'html',
@@ -101,12 +74,17 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
         parent.children.splice(index, 1);
         return [SKIP, index];
       }
-      // Otherwise, if disallowed (e.g., top-level html with disallowed tags), drop it.
-      if (!isAllowedHtml(v, opts.allowHtml)) {
-        console.warn('Linear: HTML stripped');
+      // Otherwise, sanitize for Linear and keep content.
+      const res = sanitizeForLinear(v, opts.allowHtml);
+      if (res.kind === 'empty') {
         parent.children.splice(index, 1);
         return [SKIP, index];
       }
+      if (res.kind === 'text') {
+        parent.children.splice(index, 1, { type: 'text', value: res.value });
+        return [SKIP, index];
+      }
+      node.value = res.value; // kind === 'html'
     }
   );
 
@@ -114,16 +92,6 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     .use(remarkStringify, { bullet: '-', fences: true })
     .use(remarkGfm)
     .stringify(cloned);
-}
-
-function isAllowedHtml(value: string, allow: string[]): boolean {
-  const s = String(value);
-  const tags = extractHtmlTags(s);
-  if (tags.size === 0) return isHtmlCommentOrWhitespace(s);
-
-  const allowSet = new Set(allow.map((t) => t.toLowerCase()));
-  for (const t of tags) if (!allowSet.has(t)) return false;
-  return true;
 }
 
 function extractHtmlTags(s: string): Set<string> {

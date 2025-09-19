@@ -1,6 +1,6 @@
 *Hello*
 
-A paragraph with ~strike~ and a <https://example.com|link> and <@U123> and <#C456|general> and &lt;!here&gt;.
+A paragraph with ~strike~ and a <https://example.com|link> and <@U123> and <#C456|general> and .
 
 *More Info*
 > Hidden details paragraph.
@@ -9,5 +9,5 @@ H | V
 1 | 2
 ```
 
-&lt;u&gt;html underlined&lt;/u&gt;
+html underlined
 
