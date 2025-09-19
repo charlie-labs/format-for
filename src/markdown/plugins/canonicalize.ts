@@ -78,14 +78,16 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         const fragments: PhrasingContent[] = [];
         const input = String(node.value ?? '');
         let lastIndex = 0;
+        let sawAnyMatch = false;
 
         // Composite regex covering several constructs; we will branch inside the loop
         const re =
-          /~([^~\s][^~]*?)~|<(?:(?:@([A-Z][A-Z0-9]+))|#([A-Z][A-Z0-9]+)\|([^>]+)|!((?:here|channel|everyone))|([^>|]+?)(?:\|([^>]*))?)>|@([a-zA-Z0-9._-]+)|/g;
+          /~([^~\s][^~]*?)~|<(?:(?:@([A-Z][A-Z0-9]+))|#([A-Z][A-Z0-9]+)\|([^>]+)|!((?:here|channel|everyone))|([^>|]+?)(?:\|([^>]*))?)>|@([a-zA-Z0-9._-]+)/g;
         re.lastIndex = 0;
         let m: RegExpExecArray | null;
         while ((m = re.exec(input))) {
           if (m.index === lastIndex && m[0] === '') break; // safety for trailing |
+          sawAnyMatch = true;
           if (m.index > lastIndex) {
             fragments.push({
               type: 'text',
@@ -150,6 +152,11 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
             }
           }
           lastIndex = re.lastIndex;
+        }
+
+        // Append any remaining tail after the last match so trailing text is preserved
+        if (sawAnyMatch && lastIndex < input.length) {
+          fragments.push({ type: 'text', value: input.slice(lastIndex) });
         }
 
         // Autolinks (e.g., BOT-123) applied after above to avoid re-processing
