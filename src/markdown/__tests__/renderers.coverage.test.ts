@@ -238,4 +238,41 @@ describe('renderers: branch coverage', () => {
     expect(out).not.toMatch(/<u>|ok|<blink>|nope/);
     expect(out).toContain('tail');
   });
+
+  test('linear strict allowlist: declaration-only html node is stripped', () => {
+    const ast = root([
+      { type: 'html', value: '<!here>' },
+      { type: 'paragraph', children: [{ type: 'text', value: 'tail' }] },
+    ]);
+    const out = renderLinear(ast as any, { allowHtml: ['u', 'br'] });
+    expect(out).not.toContain('<!here>');
+    expect(out).toContain('tail');
+  });
+
+  test('linear strict allowlist: declaration mixed with allowed tag strips the html node', () => {
+    const ast = root([
+      { type: 'html', value: '<u>ok</u><!here>' },
+      { type: 'paragraph', children: [{ type: 'text', value: 'tail' }] },
+    ]);
+    const out = renderLinear(ast as any, { allowHtml: ['u', 'br'] });
+    expect(out).not.toMatch(/<u>|ok|<!here>/);
+    expect(out).toContain('tail');
+  });
+
+  test('linear strict allowlist: tag matching is case-insensitive and supports self-closing', () => {
+    const ast = root([{ type: 'html', value: '<U>caps</U> and <BR/>' }]);
+    const out = renderLinear(ast as any, { allowHtml: ['u', 'br'] });
+    expect(out).toContain('<U>caps</U>');
+    expect(out).toContain('<BR/>');
+  });
+
+  test('linear strict allowlist: html comment combined with allowed tags strips the node', () => {
+    const ast = root([
+      { type: 'html', value: '<u>ok</u><!-- note -->' },
+      { type: 'paragraph', children: [{ type: 'text', value: 'tail' }] },
+    ]);
+    const out = renderLinear(ast as any, { allowHtml: ['u', 'br'] });
+    expect(out).not.toMatch(/<u>|ok|<!--/);
+    expect(out).toContain('tail');
+  });
 });

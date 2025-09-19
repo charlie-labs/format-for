@@ -53,13 +53,16 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     }
   );
 
+  // Normalize allowlist once per render for O(1) lookups
+  const allowSet = new Set(opts.allowHtml.map((t) => t.toLowerCase()));
+
   // Strip disallowed HTML blocks
   visit(
     cloned,
     'html',
     (node: Html, index: number | undefined, parent: Parent | undefined) => {
       if (!node || !parent) return;
-      if (!isAllowedHtml(node.value, opts.allowHtml)) {
+      if (!isAllowedHtml(node.value, allowSet)) {
         console.warn('Linear: HTML stripped');
         if (typeof index === 'number') parent.children.splice(index, 1);
       }
@@ -72,13 +75,28 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     .stringify(cloned);
 }
 
-function isAllowedHtml(value: string, allow: string[]): boolean {
+/**
+ * Returns true if the raw HTML `value` only includes elements/declarations present
+ * in `allowSet`.
+ *
+ * Semantics:
+ * - Element tags are matched case-insensitively (e.g., `<U>`, `<br/>`).
+ * - Declaration-like constructs are treated as synthetic names prefixed with `!`:
+ *   - `<!DOCTYPE html>` → `!doctype`
+ *   - `<!here>` → `!here`
+ *   - `<!-- comment -->` → `!--`
+ * - When any present name (element or declaration) is not in the allowlist, the
+ *   entire HTML node is disallowed and stripped.
+ * - When no tags or declarations are present, the HTML node is treated as a noop
+ *   container and allowed.
+ */
+function isAllowedHtml(value: string, allowSet: ReadonlySet<string>): boolean {
   const s = String(value);
-  const allowSet = new Set(allow.map((t) => t.toLowerCase()));
-  // Collect all HTML tag names present in the node's raw HTML.
+
+  // Collect all HTML element tag names present in the node's raw HTML.
   // Matches opening/closing/self-closing tags like: <u>, </u>, <br/>, <summary attr="x">.
-  const tagPattern = /<\/?\s*([a-zA-Z][\w:-]*)\b[^>]*>/g;
   const present = new Set<string>();
+  const tagPattern = /<\/?\s*([a-zA-Z][\w:-]*)\b[^>]*>/g;
   for (
     let m: RegExpExecArray | null = tagPattern.exec(s);
     m;
@@ -88,18 +106,33 @@ function isAllowedHtml(value: string, allow: string[]): boolean {
     if (name) present.add(name.toLowerCase());
   }
 
-  // If there are no tags, treat as allowed (noop HTML block).
-  if (present.size === 0) {
-    // Detect declaration-like or Slack special mentions (e.g., <!here>), which
-    // `tagPattern` does not capture since they don't start with a letter.
-    // If found, consider them disallowed unless explicitly allowed (not expected).
-    if (/<\s*!\s*[^>]+>/.test(s)) return false;
-    return true;
+  // Also collect declaration-like constructs (e.g., <!here>, <!doctype ...>, <!-- ... -->)
+  // Treat them as synthetic tag names that must also be allowed.
+  //  - <!here> → "!here"
+  //  - <!DOCTYPE html> → "!doctype"
+  //  - <!-- comment --> → "!--"
+  const declPattern = /<\s*!([^-\s>][^\s>]*)(?:[^>]*)>|<!--/gi;
+  for (
+    let m: RegExpExecArray | null = declPattern.exec(s);
+    m;
+    m = declPattern.exec(s)
+  ) {
+    if (m[0].startsWith('<!--')) {
+      present.add('!--');
+      continue;
+    }
+    const raw = m[1] ?? '';
+    if (!raw) continue;
+    const token = raw.toLowerCase();
+    present.add(`!${token}`);
   }
 
-  // Require that every present tag is explicitly in the allow list.
-  for (const tag of present) {
-    if (!allowSet.has(tag)) return false;
+  // No tags or declarations → noop HTML (allow)
+  if (present.size === 0) return true;
+
+  // Require that every present name is in the allow list
+  for (const name of present) {
+    if (!allowSet.has(name)) return false;
   }
   return true;
 }

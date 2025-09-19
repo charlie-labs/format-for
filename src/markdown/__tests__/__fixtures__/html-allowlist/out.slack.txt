@@ -1,0 +1,15 @@
+*HTML allowlist behavior*
+
+Allowed underline: &lt;u&gt;ok&lt;/u&gt;, uppercase &lt;U&gt;OK&lt;/U&gt;, and self-closing &lt;br/&gt; break.
+
+Slack special inside raw HTML should be stripped in Linear:
+
+Mixed allowed tag with Slack special in the same raw HTML should be stripped in Linear:
+&lt;u&gt;ok&lt;/u&gt;&lt;!here&gt;
+
+HTML comment should be stripped in Linear:
+
+Doctype should be stripped in Linear:
+
+Trailing text after stripped HTML should remain.
+
