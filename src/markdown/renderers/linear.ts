@@ -1,28 +1,33 @@
 /* eslint-disable no-console */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { type Html, type Paragraph, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
 import remarkStringify from 'remark-stringify';
 import { unified } from 'unified';
 import { visit } from 'unist-util-visit';
 
-export function renderLinear(ast: any, opts: { allowHtml: string[] }): string {
-  const cloned = structuredClone(ast);
+import { type DetailsNode, type MentionNode } from '../types.js';
+
+export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
+  const cloned: Root = structuredClone(ast);
 
   // Convert custom 'mention' nodes to plain text (Linear has no Slack mentions)
   visit(
     cloned,
     'mention',
-    (node: any, index: number | undefined, parent: any) => {
-      const d = node.data || {};
+    (
+      node: MentionNode,
+      index: number | undefined,
+      parent: Parent | undefined
+    ) => {
       let text = '';
-      if (d.subtype === 'user') {
-        text = d.label ? `@${d.label}` : '@user';
-      } else if (d.subtype === 'channel') {
-        text = d.label ? `#${d.label}` : '#channel';
-      } else if (d.subtype === 'special') {
-        text = d.id ? `@${d.id}` : '';
+      if (node.data?.subtype === 'user') {
+        text = node.data.label ? `@${node.data.label}` : '@user';
+      } else if (node.data?.subtype === 'channel') {
+        text = node.data.label ? `#${node.data.label}` : '#channel';
+      } else if (node.data?.subtype === 'special') {
+        text = node.data.id ? `@${node.data.id}` : '';
       }
-      if (typeof index === 'number') {
+      if (typeof index === 'number' && parent) {
         parent.children.splice(index, 1, { type: 'text', value: text });
       }
     }
@@ -32,31 +37,34 @@ export function renderLinear(ast: any, opts: { allowHtml: string[] }): string {
   visit(
     cloned,
     'details',
-    (node: any, index: number | undefined, parent: any) => {
+    (
+      node: DetailsNode,
+      index: number | undefined,
+      parent: Parent | undefined
+    ) => {
       const title = node.data?.summary ?? 'Details';
-      const head = {
+      const head: Paragraph = {
         type: 'paragraph',
         children: [{ type: 'text', value: `+++ ${title}` }],
       };
-      if (typeof index === 'number') {
-        parent.children.splice(
-          index,
-          1,
-          head,
-          ...((node.children as any[]) ?? [])
-        );
+      if (typeof index === 'number' && parent) {
+        parent.children.splice(index, 1, head, ...node.children);
       }
     }
   );
 
   // Strip disallowed HTML blocks
-  visit(cloned, 'html', (node: any, index: number | undefined, parent: any) => {
-    if (!node || !parent) return;
-    if (!isAllowedHtml(node.value, opts.allowHtml)) {
-      console.warn('Linear: HTML stripped');
-      if (typeof index === 'number') parent.children.splice(index, 1);
+  visit(
+    cloned,
+    'html',
+    (node: Html, index: number | undefined, parent: Parent | undefined) => {
+      if (!node || !parent) return;
+      if (!isAllowedHtml(node.value, opts.allowHtml)) {
+        console.warn('Linear: HTML stripped');
+        if (typeof index === 'number') parent.children.splice(index, 1);
+      }
     }
-  });
+  );
 
   return unified()
     .use(remarkStringify, { bullet: '-', fences: true })

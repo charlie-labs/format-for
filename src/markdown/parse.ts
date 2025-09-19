@@ -1,9 +1,10 @@
+import { type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 
 import { remarkCanonicalizeMixed } from './plugins/canonicalize.js';
-import { type AutoLinkRule, type MentionMaps } from './types.js';
+import { assertIsRoot, type AutoLinkRule, type MentionMaps } from './types.js';
 
 /**
  * Parse mixed Slack/Linear/GFM to a canonical mdast Root.
@@ -13,7 +14,7 @@ import { type AutoLinkRule, type MentionMaps } from './types.js';
 export function parseToCanonicalMdast(
   input: string,
   opts: { maps?: MentionMaps; autolinks?: { linear?: AutoLinkRule[] } } = {}
-) {
+): Root {
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
@@ -24,5 +25,7 @@ export function parseToCanonicalMdast(
 
   const ast = processor.parse(String(input));
   // Apply transforms synchronously to produce the canonical tree
-  return processor.runSync(ast as never) as unknown;
+  const out = processor.runSync(ast as never);
+  assertIsRoot(out);
+  return out;
 }

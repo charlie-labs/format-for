@@ -1,8 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { type Parent, type PhrasingContent, type Root, type Text } from 'mdast';
 import { type Plugin } from 'unified';
 import { visit } from 'unist-util-visit';
 
-import { type AutoLinkRule, type MentionMaps } from '../types.js';
+import {
+  type AutoLinkRule,
+  type DetailsNode,
+  type MentionMaps,
+  type MentionNode,
+} from '../types.js';
 
 /**
  * Normalize mixed syntax into a canonical mdast:
@@ -15,59 +20,60 @@ import { type AutoLinkRule, type MentionMaps } from '../types.js';
 export const remarkCanonicalizeMixed: Plugin<
   [{ maps?: MentionMaps; autolinks?: AutoLinkRule[] }]
 > = (opts = {}) => {
-  const pluginOpts = opts as { maps?: MentionMaps; autolinks?: AutoLinkRule[] };
-  const maps = pluginOpts.maps ?? {};
+  const maps = (opts as { maps?: MentionMaps }).maps ?? {};
   const linearUsers = maps.linear?.users ?? {};
-  const autolinks = pluginOpts.autolinks ?? [];
+  const autolinks = (opts as { autolinks?: AutoLinkRule[] }).autolinks ?? [];
 
-  return (tree: any) => {
+  return (tree) => {
+    // Visitor handles types; for the block-level transform we need a Root
+    if (!('children' in (tree as object))) return;
+    const root = tree as Root;
     // 1) Block-level: '+++ Title' → details
-    const root = tree as { children?: any[] };
-    if (Array.isArray(root.children)) {
-      for (let i = 0; i < root.children.length; i++) {
-        const n: any = root.children[i];
-        if (
-          n.type === 'paragraph' &&
-          n.children?.length === 1 &&
-          (n.children as any[])[0]?.type === 'text'
-        ) {
-          const m = /^\+\+\+\s+(.+)/.exec(
-            String((n.children as any[])[0]?.value ?? '')
-          );
-          if (m) {
-            const title = (m[1] || '').trim();
-            const body: any[] = [];
-            // Pull the next sibling as the body if present and not another '+++' header
-            const next: any = root.children[i + 1];
-            if (
-              next &&
-              !(
-                next.type === 'paragraph' &&
-                next.children?.[0]?.value?.startsWith('+++ ')
-              )
-            ) {
-              body.push(next);
-              root.children.splice(i + 1, 1);
-            }
-            // Replace current node with details
-            root.children.splice(i, 1, {
-              type: 'details',
-              data: { summary: title },
-              children: body,
-            });
-          }
-        }
+    for (let i = 0; i < root.children.length; i++) {
+      const node = root.children[i];
+      if (!node) continue;
+      if (node.type !== 'paragraph') continue;
+      const p = node;
+      if (p.children.length !== 1 || p.children[0]?.type !== 'text') continue;
+      const first = p.children[0];
+      const text = String(
+        (first && first.type === 'text' ? first.value : '') ?? ''
+      );
+      const m = /^\+\+\+\s+(.+)/.exec(text);
+      if (!m) continue;
+      const title = (m[1] || '').trim();
+      const body: Root['children'] = [];
+      const next = root.children[i + 1];
+      if (
+        next &&
+        !(
+          next.type === 'paragraph' &&
+          next.children?.[0]?.type === 'text' &&
+          String(
+            (next.children[0].type === 'text' ? next.children[0].value : '') ??
+              ''
+          ).startsWith('+++ ')
+        )
+      ) {
+        body.push(next);
+        root.children.splice(i + 1, 1);
       }
+      const details: DetailsNode = {
+        type: 'details',
+        data: { summary: title },
+        children: body,
+      };
+      root.children.splice(i, 1, details);
     }
 
     // 2) Inline text normalization
     visit(
-      tree,
+      root,
       'text',
-      (node: any, _index: number | undefined, parent: any) => {
+      (node: Text, index: number | undefined, parent: Parent | undefined) => {
         if (!parent || isCodeLike(parent)) return;
 
-        const fragments: any[] = [];
+        const fragments: PhrasingContent[] = [];
         const input = String(node.value ?? '');
         let lastIndex = 0;
 
@@ -94,23 +100,28 @@ export const remarkCanonicalizeMixed: Plugin<
             });
           } else if (m[2]) {
             // <@U123>
-            fragments.push({
+            const mention: MentionNode = {
               type: 'mention',
               data: { subtype: 'user', id: m[2] },
               children: [],
-            });
+            };
+            fragments.push(mention);
           } else if (m[3]) {
             // <#C123|name>
-            fragments.push({
+            const mention: MentionNode = {
               type: 'mention',
               data: { subtype: 'channel', id: m[3], label: m[4] },
-            });
+              children: [],
+            };
+            fragments.push(mention);
           } else if (m[5]) {
             // <!here> / <!channel> / <!everyone>
-            fragments.push({
+            const mention: MentionNode = {
               type: 'mention',
               data: { subtype: 'special', id: m[5] },
-            });
+              children: [],
+            };
+            fragments.push(mention);
           } else if (m[6]) {
             // <url|label?> or <url>
             const url = m[6];
@@ -142,10 +153,10 @@ export const remarkCanonicalizeMixed: Plugin<
         // Autolinks (e.g., BOT-123) applied after above to avoid re-processing
         if (fragments.length === 0) {
           // No matches; try autolinks on the original text
-          const frags2: any[] = [];
+          const frags2: PhrasingContent[] = [];
           let s = input;
           for (const rule of autolinks) {
-            const tmp: any[] = [];
+            const tmp: PhrasingContent[] = [];
             s = splitInclusive(
               s,
               rule.pattern,
@@ -167,38 +178,52 @@ export const remarkCanonicalizeMixed: Plugin<
               frags2.push({ type: 'text', value: s });
             }
             // Next rules operate on the concatenated plain text of previous step
-            s = frags2.map((n) => ('value' in n ? n.value : '')).join('');
+            s = frags2.map(valueOf).join('');
           }
           if (frags2.length) {
             fragments.push(...frags2);
           }
         }
 
-        if (fragments.length && parent) {
-          const p: any = parent;
-          if (Array.isArray(p.children)) {
-            const idx = p.children.indexOf(node);
-            p.children.splice(idx, 1, ...fragments);
-          }
+        if (
+          fragments.length &&
+          parent &&
+          Array.isArray(parent.children) &&
+          typeof index === 'number'
+        ) {
+          parent.children.splice(index, 1, ...fragments);
         }
       }
     );
   };
 };
 
-function isCodeLike(node: any): boolean {
-  return node.type === 'inlineCode' || node.type === 'code';
+function isCodeLike(_node: Parent): boolean {
+  // Text nodes never appear under `code`/`inlineCode` (they are Literals),
+  // so this is effectively a no-op guard to mirror previous behavior.
+  return false;
 }
 
 function templ(tpl: string, m: RegExpExecArray): string {
   return tpl.replace(/\$(\d+)/g, (_, g1) => m[Number(g1)] ?? '');
 }
 
+function valueOf(n: PhrasingContent): string {
+  switch (n.type) {
+    case 'text':
+    case 'inlineCode':
+    case 'html':
+      return String(n.value ?? '');
+    default:
+      return '';
+  }
+}
+
 function splitInclusive(
   input: string,
   re: RegExp,
-  toNode: (m: RegExpExecArray) => any | null,
-  out: any[]
+  toNode: (m: RegExpExecArray) => PhrasingContent | null,
+  out: PhrasingContent[]
 ): string {
   let last = 0;
   re.lastIndex = 0;

@@ -1,3 +1,11 @@
+import {
+  type Content,
+  type Data,
+  type Parent as MdastParent,
+  type PhrasingContent,
+  type Root,
+} from 'mdast';
+
 export type FormatTarget = 'github' | 'slack' | 'linear';
 
 /**
@@ -45,3 +53,51 @@ export type FormatFor = (
   target: FormatTarget,
   options?: FormatOptions
 ) => Promise<string>;
+
+// ——— mdast custom nodes (first‑class, typed) ———
+
+// Mention node used by the canonicalizer (Slack-style mentions, plus specials)
+export interface MentionNode extends MdastParent {
+  type: 'mention';
+  // We keep data small and predictable; all values are optional at parse time
+  data?: Data & {
+    subtype: 'user' | 'channel' | 'special';
+    id?: string;
+    label?: string;
+  };
+  // Mentions are phrasing content; children are rarely used but allowed
+  children: PhrasingContent[];
+}
+
+// Details node that models GitHub <details> / Linear +++ blocks
+export interface DetailsNode extends MdastParent {
+  type: 'details';
+  data?: Data & { summary?: string };
+  children: Content[];
+}
+
+// Module augmentation so `mention`/`details` participate in mdast unions
+declare module 'mdast' {
+  interface PhrasingContentMap {
+    mention: MentionNode;
+  }
+  interface BlockContentMap {
+    details: DetailsNode;
+  }
+  interface RootContentMap {
+    mention: MentionNode;
+    details: DetailsNode;
+  }
+}
+
+// Small, centrally-defined unions/guards used across files
+export type InlineNode = PhrasingContent; // includes our `mention` via augmentation
+
+export function isRoot(node: unknown): node is Root {
+  const n = node as { type?: unknown; children?: unknown };
+  return !!n && n.type === 'root' && Array.isArray(n.children);
+}
+
+export function assertIsRoot(node: unknown): asserts node is Root {
+  if (!isRoot(node)) throw new Error('Expected mdast Root');
+}
