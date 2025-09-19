@@ -22,9 +22,9 @@ describe('canonicalizer: preserves trailing text after inline matches', () => {
       'Check <https://ex.com|Ex> please',
       'github'
     );
-    expect(withTail).toContain('Check <https://ex.com|Ex> please');
+    expect(withTail).toContain('Check [Ex](https://ex.com) please');
 
     const noTail = await formatFor('Check <https://ex.com|Ex>', 'github');
-    expect(noTail).toContain('Check <https://ex.com|Ex>');
+    expect(noTail).toContain('Check [Ex](https://ex.com)');
   });
 });
