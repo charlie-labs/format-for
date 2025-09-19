@@ -33,7 +33,7 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     }
   );
 
-  // details -> `+++ Title` then body
+  // details -> `+++ Title` then body then closing `+++`
   visit(
     cloned,
     'details',
@@ -48,7 +48,11 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
         children: [{ type: 'text', value: `+++ ${title}` }],
       };
       if (typeof index === 'number' && parent) {
-        parent.children.splice(index, 1, head, ...node.children);
+        const tail: Paragraph = {
+          type: 'paragraph',
+          children: [{ type: 'text', value: '+++' }],
+        };
+        parent.children.splice(index, 1, head, ...node.children, tail);
       }
     }
   );

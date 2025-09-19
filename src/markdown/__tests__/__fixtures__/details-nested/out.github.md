@@ -3,13 +3,11 @@
 
 * First item in outer details
 
-</details>
-
 <details>
 <summary>Inner Title</summary>
 
 Hidden inner details paragraph.
-
+</details>
 </details>
 
 After details.

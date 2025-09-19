@@ -211,6 +211,7 @@ describe('renderers: branch coverage', () => {
     ]);
     const out = renderLinear(ast as any, { allowHtml: ['u', 'br'] });
     expect(out).toContain('+++ S');
+    expect(out).toContain('\n+++');
     expect(out).not.toContain('<blink>');
     expect(out).toContain('@Foo');
     expect(out).toContain('#bar');

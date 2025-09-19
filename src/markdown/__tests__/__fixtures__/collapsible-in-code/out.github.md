@@ -11,5 +11,4 @@ And here is a real collapsible:
 <summary>Outside Details</summary>
 
 This is the collapsible body.
-
 </details>
