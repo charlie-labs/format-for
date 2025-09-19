@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { formatFor } from '../../index.js';
 
@@ -29,6 +29,15 @@ describe('fixtures: exact outputs per target + warnings', () => {
           .mockImplementation((_msg?: unknown, ..._rest: unknown[]) => {
             // swallow warnings in tests
           });
+      });
+
+      afterEach(() => {
+        // Ensure spies are always cleaned up to avoid hanging open handles in CI
+        try {
+          warnSpy?.mockRestore?.();
+        } finally {
+          vi.restoreAllMocks();
+        }
       });
 
       test('github', async () => {

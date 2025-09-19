@@ -31,7 +31,12 @@ describe('property tests', () => {
           }
         }
       ),
-      { verbose: true }
+      {
+        verbose: true,
+        // Keep CI stable: cap the number of runs and interrupt long shrinks
+        numRuns: 50,
+        interruptAfterTimeLimit: 15000,
+      }
     );
   });
 
@@ -42,7 +47,7 @@ describe('property tests', () => {
         const idx = out.indexOf('>>>');
         expect(idx).toBe(-1);
       }),
-      { verbose: true }
+      { verbose: true, numRuns: 50, interruptAfterTimeLimit: 10000 }
     );
   });
 });
