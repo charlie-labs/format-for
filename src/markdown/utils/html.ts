@@ -1,10 +1,11 @@
-import { type Element, type Parent as HastParent, type Root } from 'hast';
+import { type Element, type Root } from 'hast';
 import { type Schema } from 'hast-util-sanitize';
 import { toHtml } from 'hast-util-to-html';
 import { toText } from 'hast-util-to-text';
 import rehypeParse from 'rehype-parse';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { unified } from 'unified';
+import { type Parent as UnistParent } from 'unist';
 import { SKIP, visit } from 'unist-util-visit';
 
 // Hoisted processors to avoid per-call allocation in hot paths
@@ -64,16 +65,24 @@ export function sanitizeForLinear(
 
 // Remove script/style elements entirely (including their children)
 function stripDangerous(tree: Root): void {
-  visit(tree, 'element', (node: Element, index, parent) => {
-    if (parent && typeof index === 'number') {
-      const name = String(node.tagName || '').toLowerCase();
-      if (name === 'script' || name === 'style') {
-        (parent as HastParent).children.splice(index, 1);
-        return [SKIP, index];
+  visit(
+    tree,
+    'element',
+    (
+      node: Element,
+      index: number | undefined,
+      parent: UnistParent | undefined
+    ) => {
+      if (parent && typeof index === 'number') {
+        const name = String(node.tagName || '').toLowerCase();
+        if (name === 'script' || name === 'style') {
+          parent.children.splice(index, 1);
+          return [SKIP, index];
+        }
       }
+      return undefined;
     }
-    return undefined;
-  });
+  );
 }
 
 // Construct a strict schema for Linear: only specific tags, no attributes, preserve comments,
