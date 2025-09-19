@@ -11,7 +11,7 @@ A minimal, fast Bun + TypeScript project scaffold with consistent tooling:
 
 - TypeScript (ESM, strict)
 - ESLint + Prettier for linting/formatting
-- Bun test runner
+- Vitest test runner (invoked via `bun run test`)
 - Husky + lint-staged pre-commit checks
 - GitHub Actions CI (typecheck, lint, test)
 - Build & metadata tooling: `bun run build` drives `zshy` (configured via the `"zshy"` key in package.json) to emit dual CJS/ESM bundles; CI also runs `bun run build` to regenerate `package.json` metadata and catch drift
@@ -51,7 +51,7 @@ bun install
 # Verify everything is wired
 bun run typecheck
 bun run lint
-bun test
+bun run test
 ```
 
 ---
@@ -64,7 +64,8 @@ Common tasks (see `package.json` for the full list):
 - `ci`: `bun run typecheck && bun run lint && bun run test`
 - `fix`: `eslint --fix --quiet . ; prettier --write --log-level=silent .`
 - `lint`: `eslint . && prettier --check .`
-- `test`: `bun test`
+- `test`: `vitest run --reporter=dot --coverage`
+- `test:watch`: `vitest`
 - `typecheck`: `tsc --noEmit`
 
 Usage:
@@ -73,7 +74,7 @@ Usage:
 bun run typecheck # TS type checks, no emit
 bun run lint      # static analysis + Prettier check
 bun run fix       # auto-fix lint + format issues
-bun test      # unit tests with Bun
+bun run test     # unit tests with Vitest
 bun run build     # emit CJS/ESM bundles via zshy (see package.json#"zshy")
 ```
 
@@ -121,11 +122,11 @@ if (import.meta.main) {
 
 ## Testing
 
-- Tests run with `bun test`.
+- Tests use Vitest. Run with `bun run test` or `bun run test:watch`.
 - Co-locate specs beside source (e.g., `src/index.test.ts`).
 
 ```ts
-import { expect, test } from 'bun:test';
+import { expect, test } from 'vitest';
 import { helloWorld } from './index.js';
 
 test('helloWorld', () => {

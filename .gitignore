@@ -1,6 +1,8 @@
 **/node_modules
 dist
 .tshy
+.zshy
+coverage
 .env
 .env.*
 *.env

@@ -1,0 +1,1 @@
+Slack: table downgraded to code block
