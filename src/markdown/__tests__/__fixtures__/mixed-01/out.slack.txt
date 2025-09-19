@@ -1,6 +1,6 @@
 *Hello*
 
-A paragraph with ~strike~ and a <https://example.com|link|https://example.com|link> and &lt;@U123&gt; and &lt;#C456|general&gt; and &lt;!here&gt;.
+A paragraph with ~strike~ and a <https://example.com|link|https://example.com|link> and <@U123> and <#C456|general> and &lt;!here&gt;.
 
 *More Info*
 > Hidden details paragraph.
