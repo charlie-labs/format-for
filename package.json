@@ -14,7 +14,7 @@
     "lint": "eslint . && prettier --check .",
     "prepare": "husky",
     "prepublishOnly": "bun run build",
-    "test": "bun test",
+    "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
   "lint-staged": {
@@ -44,14 +44,17 @@
     "@charlie-labs/config": "^0.0.12",
     "@types/bun": "^1.2.20",
     "@types/unist": "^3.0.3",
+    "@vitest/coverage-v8": "^2.1.4",
     "eslint": "^9.34.0",
+    "fast-check": "^3.20.0",
     "husky": "^9.1.7",
     "knip": "^5.63.1",
     "lint-staged": "^16.1.6",
     "mdast": "^3.0.0",
-    "np": "^10.2.0",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
+    "vitest": "^2.1.4",
+    "np": "^10.2.0",
     "zshy": "^0.3.5"
   },
   "packageManager": "bun@1.2.22",

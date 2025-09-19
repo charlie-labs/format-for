@@ -1,0 +1,2 @@
+Slack: table downgraded to code block
+Slack: image downgraded to link

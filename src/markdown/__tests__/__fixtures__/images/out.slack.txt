@@ -1,0 +1,4 @@
+<https://cdn.example.com/diag.svg|diagram>
+
+<https://cdn.example.com/alt.png|alt text>
+

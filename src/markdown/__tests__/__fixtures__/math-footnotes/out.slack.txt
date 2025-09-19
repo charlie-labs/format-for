@@ -1,0 +1,6 @@
+Math: $x + y = z$ and inline code `a_b`.
+
+Footnote ref continues.
+
+Footnote text with a link: <https://example.com|https://example.com>.
+
