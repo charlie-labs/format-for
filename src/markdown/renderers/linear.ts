@@ -73,7 +73,33 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
 }
 
 function isAllowedHtml(value: string, allow: string[]): boolean {
-  return allow.some((tag) =>
-    new RegExp(`<\\/?${tag}\\b`, 'i').test(String(value))
-  );
+  const s = String(value);
+  const allowSet = new Set(allow.map((t) => t.toLowerCase()));
+  // Collect all HTML tag names present in the node's raw HTML.
+  // Matches opening/closing/self-closing tags like: <u>, </u>, <br/>, <summary attr="x">.
+  const tagPattern = /<\/?\s*([a-zA-Z][\w:-]*)\b[^>]*>/g;
+  const present = new Set<string>();
+  for (
+    let m: RegExpExecArray | null = tagPattern.exec(s);
+    m;
+    m = tagPattern.exec(s)
+  ) {
+    const name = m[1];
+    if (name) present.add(name.toLowerCase());
+  }
+
+  // If there are no tags, treat as allowed (noop HTML block).
+  if (present.size === 0) {
+    // Detect declaration-like or Slack special mentions (e.g., <!here>), which
+    // `tagPattern` does not capture since they don't start with a letter.
+    // If found, consider them disallowed unless explicitly allowed (not expected).
+    if (/<\s*!\s*[^>]+>/.test(s)) return false;
+    return true;
+  }
+
+  // Require that every present tag is explicitly in the allow list.
+  for (const tag of present) {
+    if (!allowSet.has(tag)) return false;
+  }
+  return true;
 }

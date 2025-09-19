@@ -216,4 +216,26 @@ describe('renderers: branch coverage', () => {
     expect(out).toContain('#bar');
     expect(out).toContain('@here');
   });
+
+  test('linear allows html nodes with no tags (noop HTML)', () => {
+    const ast = root([
+      { type: 'html', value: 'plain text only' },
+      { type: 'paragraph', children: [{ type: 'text', value: 'after' }] },
+    ]);
+    const out = renderLinear(ast as any, { allowHtml: ['u', 'br'] });
+    // The raw html node has no tags, so it should not be stripped and its content should appear.
+    expect(out).toContain('plain text only');
+    expect(out).toContain('after');
+  });
+
+  test('linear strict allowlist: mixed tags in one html node are stripped', () => {
+    const ast = root([
+      { type: 'html', value: '<u>ok</u><blink>nope</blink>' },
+      { type: 'paragraph', children: [{ type: 'text', value: 'tail' }] },
+    ]);
+    const out = renderLinear(ast as any, { allowHtml: ['u'] });
+    // Entire raw html node should be removed due to disallowed <blink>.
+    expect(out).not.toMatch(/<u>|ok|<blink>|nope/);
+    expect(out).toContain('tail');
+  });
 });
