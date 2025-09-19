@@ -23,8 +23,8 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
         },
       },
     });
-    expect(outSlack).toContain('&lt;@U42&gt;');
-    expect(outSlack).toContain('&lt;#C77|dev&gt;');
+    expect(outSlack).toContain('<@U42>');
+    expect(outSlack).toContain('<#C77|dev>');
     expect(outSlack).toContain('&lt;!here&gt;');
     expect(outSlack).toContain('<https://ex.com|Ex|https://ex.com|Ex>');
 
