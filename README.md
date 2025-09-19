@@ -65,6 +65,7 @@ Common tasks (see `package.json` for the full list):
 - `fix`: `eslint --fix --quiet . ; prettier --write --log-level=silent .`
 - `lint`: `eslint . && prettier --check .`
 - `test`: `vitest run --reporter=dot --coverage`
+- `test:watch`: `vitest`
 - `typecheck`: `tsc --noEmit`
 
 Usage:
