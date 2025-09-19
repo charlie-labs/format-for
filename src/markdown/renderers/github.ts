@@ -1,6 +1,8 @@
 import { type Html, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
-import remarkStringify from 'remark-stringify';
+import remarkStringify, {
+  type Options as RemarkStringifyOptions,
+} from 'remark-stringify';
 import { unified } from 'unified';
 import { visit } from 'unist-util-visit';
 
@@ -47,16 +49,17 @@ export function renderGithub(ast: Root): string {
       // Convert any nested details inside the body to HTML first, then stringify
       // the body so remark doesn't encounter unknown `details` nodes.
       convertNestedDetails(node.children);
-      const inner = toMarkdownChildren(node.children).trim();
+      const inner = trimTrailingNewlines(toMarkdownChildren(node.children));
       const html = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
       if (typeof index === 'number' && parent) {
-        parent.children.splice(index, 1, { type: 'html', value: html });
+        const htmlNode: Html = { type: 'html', value: html };
+        parent.children.splice(index, 1, htmlNode);
       }
     }
   );
 
   return unified()
-    .use(remarkStringify, { bullet: '-', fences: true })
+    .use(remarkStringify, stringifyOptions)
     .use(remarkGfm)
     .stringify(cloned);
 }
@@ -71,9 +74,10 @@ function convertNestedDetails(children: Root['children']): void {
       const summary =
         (typeof n.data?.summary === 'string' ? n.data.summary : undefined) ??
         'Details';
-      const inner = toMarkdownChildren(n.children).trim();
+      const inner = trimTrailingNewlines(toMarkdownChildren(n.children));
       const value = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
-      children.splice(i, 1, { type: 'html', value } as Html);
+      const htmlNode: Html = { type: 'html', value };
+      children.splice(i, 1, htmlNode);
       continue;
     }
     if (hasChildren(n)) {
@@ -92,7 +96,7 @@ function hasChildren(n: unknown): n is { children: unknown[] } {
 
 function toMarkdownChildren(children: Root['children']): string {
   return unified()
-    .use(remarkStringify)
+    .use(remarkStringify, stringifyOptions)
     .use(remarkGfm)
     .stringify({ type: 'root', children } satisfies Root);
 }
@@ -100,3 +104,12 @@ function toMarkdownChildren(children: Root['children']): string {
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+function trimTrailingNewlines(s: string): string {
+  return s.replace(/\n+$/, '');
+}
+
+const stringifyOptions = {
+  bullet: '-',
+  fences: true,
+} satisfies RemarkStringifyOptions;
