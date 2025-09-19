@@ -1,0 +1,6 @@
+*.env
+*.jsonl
+*.log
+build
+dist
+README_TEMPLATE.md

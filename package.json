@@ -1,0 +1,74 @@
+{
+  "name": "format-for",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "private": true,
+  "sideEffects": false,
+  "zshy": "./src/index.ts",
+  "scripts": {
+    "build": "bun run --bun zshy",
+    "ci": "bun run typecheck && bun run lint && bun run test",
+    "clean": "rm -rf node_modules",
+    "fix": "eslint --fix --quiet . ; prettier --write --log-level=silent .",
+    "lint": "eslint . && prettier --check .",
+    "prepare": "husky",
+    "prepublishOnly": "bun run build",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "prettier": "@charlie-labs/config/prettier",
+  "np": {
+    "testScript": "ci"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@charlie-labs/config": "^0.0.12",
+    "@types/bun": "^1.2.20",
+    "eslint": "^9.34.0",
+    "husky": "^9.1.7",
+    "knip": "^5.63.1",
+    "lint-staged": "^16.1.6",
+    "np": "^10.2.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "zshy": "^0.3.5"
+  },
+  "packageManager": "bun@1.2.22",
+  "engines": {
+    "bun": "1"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.cts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/charlie-labs/format-for.git"
+  },
+  "homepage": "https://github.com/charlie-labs/format-for",
+  "bugs": {
+    "url": "https://github.com/charlie-labs/format-for/issues"
+  }
+}

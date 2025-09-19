@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@charlie-labs/config/tsconfig-node",
+  "include": ["src", "scripts", "knip.ts"],
+  "exclude": ["**/node_modules", "**/.*/"],
+  "compilerOptions": {
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true
+  }
+}
