@@ -1,0 +1,2 @@
+See &lt;<https://ex.com|*bold|https://ex.com|*bold>* _em_ &amp; < | >&gt;, and <mailto:hi@example.com|_mail_|mailto:hi@example.com|_mail_>.
+
