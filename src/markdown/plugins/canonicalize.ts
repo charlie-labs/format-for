@@ -1,6 +1,12 @@
-import { type Parent, type PhrasingContent, type Root, type Text } from 'mdast';
+import {
+  type Link,
+  type Parent,
+  type PhrasingContent,
+  type Root,
+  type Text,
+} from 'mdast';
 import { type Plugin } from 'unified';
-import { visit } from 'unist-util-visit';
+import { CONTINUE, visit } from 'unist-util-visit';
 
 import {
   type AutoLinkRule,
@@ -34,6 +40,32 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   const autolinks = opts?.autolinks ?? [];
 
   return (root: Root) => {
+    // 0) Pre-pass: fix Slack-style autolinks that `remark-parse` mis-parses as a
+    //    single link node whose URL contains a pipe. Example input:
+    //      "<https://a.co|A>" → link { url: 'https://a.co|A', text: 'https://a.co|A' }
+    //    We want a proper mdast link: url: 'https://a.co', children: [Text('A')]
+    visit(root, 'link', (node: Link) => {
+      const url = String(node.url ?? '');
+      if (!url.includes('|')) return;
+      // Only fix the specific mis-parse shape produced by remark for `<url|label>`:
+      // a link whose single text child equals the URL string.
+      if (
+        node.children.length !== 1 ||
+        node.children[0]?.type !== 'text' ||
+        String(node.children[0].value ?? '') !== url
+      ) {
+        return;
+      }
+      // '|' is not valid in URLs; treat the first '|' as Slack label separator
+      const parts = url.split('|', 2);
+      const u = parts[0] ?? url;
+      const labelRaw = parts[1];
+      const label = (labelRaw ?? u).trim();
+      node.url = u;
+      node.title = null;
+      node.children = [{ type: 'text', value: label }];
+    });
+
     // 1) Block-level: '+++ Title' ... '+++' → details (with nesting)
     canonicalizeDetailsInParent(root);
 
@@ -122,22 +154,47 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           }
           lastIndex = re.lastIndex;
         }
-
-        // Append any remaining tail after the last match so trailing text is preserved
+        // Append remaining tail after the last match so trailing text is preserved
         if (sawAnyMatch && lastIndex < input.length) {
           fragments.push({ type: 'text', value: input.slice(lastIndex) });
         }
 
-        // Autolinks (e.g., BOT-123) applied after above to avoid re-processing
-        if (fragments.length === 0) {
-          // No matches; try autolinks on the original text
-          const frags2: PhrasingContent[] = [];
-          let s = input;
-          for (const rule of autolinks) {
+        // Note: autolinks are applied in a dedicated second pass below.
+        if (
+          fragments.length &&
+          parent &&
+          Array.isArray(parent.children) &&
+          typeof index === 'number'
+        ) {
+          parent.children.splice(index, 1, ...fragments);
+        }
+      }
+    );
+
+    // 3) Second pass: apply autolinks inside plain text fragments only (skip inside existing links)
+    if (autolinks.length > 0) {
+      visit(root, 'text', (node: Text, index, parent) => {
+        if (!parent || typeof index !== 'number') return;
+        // do not modify labels of existing links or reference-style links
+        if (parent.type === 'link' || parent.type === 'linkReference') {
+          return;
+        }
+        const input = String(node.value ?? '');
+        let parts: PhrasingContent[] = [{ type: 'text', value: input }];
+        for (const rule of autolinks) {
+          // Clone once per rule and reset between segments to avoid `lastIndex` bleed
+          const re = new RegExp(rule.pattern.source, rule.pattern.flags);
+          const next: PhrasingContent[] = [];
+          for (const seg of parts) {
+            if (seg.type !== 'text') {
+              next.push(seg);
+              continue;
+            }
             const tmp: PhrasingContent[] = [];
-            s = splitInclusive(
-              s,
-              rule.pattern,
+            re.lastIndex = 0;
+            splitInclusive(
+              String(seg.value ?? ''),
+              re,
               (mm) => {
                 const url = templ(rule.urlTemplate, mm);
                 const label = templ(rule.labelTemplate ?? '$0', mm) || mm[0];
@@ -150,29 +207,23 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
               },
               tmp
             );
-            if (tmp.length) {
-              frags2.push(...tmp);
-            } else {
-              frags2.push({ type: 'text', value: s });
-            }
-            // Next rules operate on the concatenated plain text of previous step
-            s = frags2.map(valueOf).join('');
+            next.push(...tmp);
           }
-          if (frags2.length) {
-            fragments.push(...frags2);
-          }
+          parts = next;
         }
-
+        // No-op when nothing changed to avoid churn and re-visits
         if (
-          fragments.length &&
-          parent &&
-          Array.isArray(parent.children) &&
-          typeof index === 'number'
+          parts.length === 1 &&
+          parts[0]?.type === 'text' &&
+          parts[0]?.value === input
         ) {
-          parent.children.splice(index, 1, ...fragments);
+          return;
         }
-      }
-    );
+        parent.children.splice(index, 1, ...parts);
+        // Continue after the inserted range to avoid revisiting freshly-added nodes
+        return [CONTINUE, index + parts.length];
+      });
+    }
   };
 };
 
@@ -214,15 +265,15 @@ function canonicalizeDetailsInParent(parent: Parent): void {
     // Collect body nodes between i+1 and j-1 (inclusive)
     const body = parent.children.slice(i + 1, j);
     // Remove opener..closer range and replace with details node
-    parent.children.splice(i, j - i + 1, {
+    const details: DetailsNode = {
       type: 'details',
       data: { summary: title },
       children: body,
-    } as DetailsNode);
+    };
+    parent.children.splice(i, j - i + 1, details);
 
     // Recursively canonicalize nested openers inside the new details body
-    const inserted = parent.children[i] as DetailsNode;
-    canonicalizeDetailsInParent(inserted);
+    canonicalizeDetailsInParent(details);
 
     // Continue after the inserted node
   }
@@ -236,17 +287,6 @@ function isCodeLike(_node: Parent): boolean {
 
 function templ(tpl: string, m: RegExpExecArray): string {
   return tpl.replace(/\$(\d+)/g, (_, g1) => m[Number(g1)] ?? '');
-}
-
-function valueOf(n: PhrasingContent): string {
-  switch (n.type) {
-    case 'text':
-    case 'inlineCode':
-    case 'html':
-      return String(n.value ?? '');
-    default:
-      return '';
-  }
 }
 
 function splitInclusive(

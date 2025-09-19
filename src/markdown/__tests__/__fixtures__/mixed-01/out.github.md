@@ -1,6 +1,6 @@
 # Hello
 
-A paragraph with ~~strike~~ and a <https://example.com|link> and @U123 and #general and <!here>.
+A paragraph with ~~strike~~ and a [link](https://example.com) and @U123 and #general and <!here>.
 
 <details>
 <summary>More Info</summary>
