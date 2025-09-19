@@ -1,5 +1,5 @@
 before
 
-<u>ok</u>
+\<u>\</u>ok
 
 after

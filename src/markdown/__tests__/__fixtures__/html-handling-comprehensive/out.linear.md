@@ -1,17 +1,16 @@
 # HTML handling: mixed cases
 
-Inline: foo & bar <u>u</u> and <sub>2</sub>/<sup>n</sup> with <br>line break.
+Inline: foo & bar \<u>\</u>u and \<sub>\</sub>2/\<sup>\</sup>n with \<br>line break.
 
 Block with <u>u</u> and bad<br>next line
 
-Comments: <!-- keep me -->ok.
+Comments: \<!-- keep me -->ok.
 
-Attributes: <u>styled</u> and <sup>x</sup> and click.
+Attributes: \<u>\</u>styled and \<sup>\</sup>x and click.
 
-Disallowed dangerous: mid and end.
+Disallowed dangerous:  mid and end.
 
 <details>
-<summary>More</summary>
+<summary>More</summary></details>
 
-Line 1 <u>u</u>
-</details>
+Line 1 \<u>\</u>u

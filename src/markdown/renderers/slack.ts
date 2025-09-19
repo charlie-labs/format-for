@@ -69,7 +69,7 @@ function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
       console.warn('Slack: HTML stripped');
       const text = htmlFragmentToText(String(n.value ?? ''));
       if (text.trim()) {
-        out.push(text, '\n\n');
+        out.push(escapeSlackText(text), '\n\n');
       }
       continue;
     }
@@ -85,11 +85,15 @@ function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
 
 function renderInline(children: PhrasingContent[]): string {
   let s = '';
-  let skipUntil: string | null = null; // e.g., '</script>' or '</style>'
+  let skip: 'script' | 'style' | null = null;
   for (const c of children) {
-    if (skipUntil) {
-      if (c.type === 'html' && String(c.value ?? '').toLowerCase() === skipUntil) {
-        skipUntil = null;
+    if (skip) {
+      if (c.type === 'html') {
+        const raw = String(c.value ?? '');
+        const close = new RegExp(`^</${skip}\\s*>$`, 'i');
+        if (close.test(raw)) {
+          skip = null;
+        }
       }
       continue;
     }
@@ -139,19 +143,23 @@ function renderInline(children: PhrasingContent[]): string {
       // Inline HTML becomes plain text; no warning for inline occurrences.
       // Special-case Slack forms like '<!here>' that sometimes parse as HTML: keep as literal text.
       const raw = String(c.value ?? '');
-      const lower = raw.toLowerCase();
-      if (lower === '<script>') {
-        skipUntil = '</script>';
+      if (/^<script\b[^>]*>$/i.test(raw)) {
+        skip = 'script';
         continue;
       }
-      if (lower === '<style>') {
-        skipUntil = '</style>';
+      if (/^<style\b[^>]*>$/i.test(raw)) {
+        skip = 'style';
         continue;
       }
-      if (/^<\!(?:here|channel|everyone)>$/.test(raw)) {
+      if (/^<\/\s*(?:script|style)\s*>$/i.test(raw)) {
+        // unmatched closer (defensive)
+        skip = null;
+        continue;
+      }
+      if (/^<\!(?:here|channel|everyone)>$/i.test(raw)) {
         s += escapeSlackText(raw);
       } else {
-        s += htmlFragmentToText(raw);
+        s += escapeSlackText(htmlFragmentToText(raw));
       }
       continue;
     }

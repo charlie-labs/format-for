@@ -1,11 +1,15 @@
+import { type Element, type Parent as HastParent, type Root } from 'hast';
+import { type Schema } from 'hast-util-sanitize';
 import { toHtml } from 'hast-util-to-html';
 import { toText } from 'hast-util-to-text';
 import rehypeParse from 'rehype-parse';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { unified } from 'unified';
-import { visit } from 'unist-util-visit';
+import { SKIP, visit } from 'unist-util-visit';
 
-const base = unified().use(rehypeParse, { fragment: true });
+// Hoisted processors to avoid per-call allocation in hot paths
+const parseHtml = unified().use(rehypeParse, { fragment: true });
+const sanitizeDefault = unified().use(rehypeSanitize);
 
 /**
  * Convert an arbitrary HTML fragment into plain text suitable for Slack.
@@ -14,13 +18,11 @@ const base = unified().use(rehypeParse, { fragment: true });
  * - Converts <br> to newlines using whitespace: 'pre'.
  */
 export function htmlFragmentToText(html: string): string {
-  const tree = base.parse(String(html ?? ''));
+  const root = parseHtml.parse(String(html ?? ''));
   // Remove dangerous nodes (script/style) entirely before text extraction.
-  stripDangerous(tree as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+  stripDangerous(root);
   // Default schema is conservative: drops unknown tags, keeps text.
-  const clean = unified()
-    .use(rehypeSanitize)
-    .runSync(tree as any) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const clean = sanitizeDefault.runSync(root);
   return toText(clean, { whitespace: 'pre' });
 }
 
@@ -43,67 +45,54 @@ export function sanitizeForLinear(
   html: string,
   allow: string[]
 ): LinearSanitized {
-  const raw = base.parse(String(html ?? '')) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-  const allowSet = new Set((allow ?? []).map((t) => t.toLowerCase()));
-
+  const raw = parseHtml.parse(String(html ?? ''));
   // Transform the HAST tree in-place:
   // - Drop <script>/<style> and their contents
-  // - Unwrap disallowed elements (keep children)
-  // - Strip all attributes on allowed elements
+  // - Sanitize with a strict allowlist (strip disallowed tags; no attributes)
   stripDangerous(raw);
-  unwrapAndStrip(raw, allowSet);
+  const schema = linearSchema(allow ?? []);
+  const clean = unified().use(rehypeSanitize, schema).runSync(raw);
 
-  const asHtml = toHtml(raw, { allowParseErrors: true });
+  const asHtml = toHtml(clean, { allowParseErrors: true });
   const trimmed = asHtml.trim();
   if (trimmed === '') return { kind: 'empty', value: '' };
   // If any markup-like form remains (tags or comments), return HTML; otherwise text.
   const looksLikeMarkup = /<[^>]+>/.test(trimmed);
   if (looksLikeMarkup) return { kind: 'html', value: trimmed };
-  return { kind: 'text', value: toText(raw, { whitespace: 'pre' }) };
+  return { kind: 'text', value: toText(clean, { whitespace: 'pre' }) };
 }
 
 // Remove script/style elements entirely (including their children)
-function stripDangerous(tree: any): void {
-  visit(tree, 'element', (node: any, index: number | undefined, parent: any) => {
-    if (!parent || typeof index !== 'number') return;
-    const name = String(node.tagName || '').toLowerCase();
-    if (name === 'script' || name === 'style') {
-      parent.children.splice(index, 1);
-      return [visit.SKIP, index];
+function stripDangerous(tree: Root): void {
+  visit(tree, 'element', (node: Element, index, parent) => {
+    if (parent && typeof index === 'number') {
+      const name = String(node.tagName || '').toLowerCase();
+      if (name === 'script' || name === 'style') {
+        (parent as HastParent).children.splice(index, 1);
+        return [SKIP, index];
+      }
     }
     return undefined;
   });
 }
 
-// For non-dangerous elements, unwrap disallowed tags and drop attributes on allowed ones.
-function unwrapAndStrip(tree: any, allow: Set<string>): void {
-  function sanitizeNodes(nodes: any[]): any[] {
-    const out: any[] = [];
-    for (const n of nodes) {
-      if (!n) continue;
-      if (n.type === 'element') {
-        const name = String(n.tagName || '').toLowerCase();
-        // script/style already handled by stripDangerous
-        const children = Array.isArray(n.children) ? sanitizeNodes(n.children) : [];
-        if (allow.has(name)) {
-          out.push({ type: 'element', tagName: name, properties: {}, children });
-        } else {
-          // unwrap: append children
-          out.push(...children);
-        }
-      } else if (n.type === 'comment' || n.type === 'text') {
-        out.push(n);
-      } else if (Array.isArray(n.children)) {
-        // Generic parent: sanitize its children recursively
-        const kids = sanitizeNodes(n.children);
-        out.push({ ...n, children: kids });
-      } else {
-        out.push(n);
-      }
-    }
-    return out;
-  }
-  if (Array.isArray(tree.children)) {
-    tree.children = sanitizeNodes(tree.children);
-  }
+// Construct a strict schema for Linear: only specific tags, no attributes, preserve comments,
+// and strip (unwrap) disallowed tags while keeping their children.
+function linearSchema(allow: string[]): Schema {
+  const allowed = new Set([
+    'br',
+    'details',
+    'summary',
+    'u',
+    'sub',
+    'sup',
+    ...allow.map((t) => t.toLowerCase()),
+  ] as const);
+  return {
+    ...defaultSchema,
+    tagNames: Array.from(allowed),
+    attributes: {},
+    allowComments: true,
+    strip: ['script', 'style'],
+  } satisfies Schema;
 }

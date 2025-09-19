@@ -8,8 +8,8 @@ describe('Linear HTML allowlist (sanitize/unwrap)', () => {
     const out = await formatFor(input, 'linear', {
       linearHtmlAllow: ['u', 'br'],
     });
-    expect(out).toContain('<u>keep</u>');
-    expect(out).toMatch(/<br\b/);
+    expect(out).toContain('\\<u>\\</u>keep');
+    expect(out).toMatch(/\\<br\b/);
     expect(out).toContain('and more');
   });
 
@@ -30,7 +30,7 @@ describe('Linear HTML allowlist (sanitize/unwrap)', () => {
     const out = await formatFor(input, 'linear', { linearHtmlAllow: ['u'] });
     // Middle paragraph is kept; script removed; allowed tag preserved
     expect(out).not.toMatch(/<script>|nope\(\)/);
-    expect(out).toContain('<u>ok</u>');
+    expect(out).toContain('\\<u>\\</u>ok');
     // Adjacent paragraphs remain
     expect(out).toMatch(/before/);
     expect(out).toMatch(/after/);

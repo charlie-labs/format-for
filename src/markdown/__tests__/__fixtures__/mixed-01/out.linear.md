@@ -14,4 +14,4 @@ Hidden details paragraph.
 
 ![alt](https://example.com/img.png)
 
-<u>html underlined</u>
+\<u>\</u>html underlined

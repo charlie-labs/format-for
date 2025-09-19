@@ -61,6 +61,46 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
   // - Inline HTML with no real tags (e.g., Slack '<!here>'): drop the node
   // - Allowed tags preserved; attributes stripped; disallowed tags unwrapped
   // - script/style contents removed entirely
+  visit(cloned, 'paragraph', (p) => {
+    // Drop inline text that appears between <script>...</script> or <style>...</style>
+    // pairs that were parsed into html/text/html siblings.
+    const out: Paragraph['children'] = [];
+    let skip: 'script' | 'style' | null = null;
+    for (const child of p.children) {
+      if (skip) {
+        if (child.type === 'html') {
+          const raw = String(child.value ?? '')
+            .trim()
+            .toLowerCase();
+          if (
+            (skip === 'script' && raw === '</script>') ||
+            (skip === 'style' && raw === '</style>')
+          ) {
+            skip = null;
+          }
+        }
+        continue;
+      }
+      if (child.type === 'html') {
+        const raw = String(child.value ?? '');
+        if (/^<script\b[^>]*>$/i.test(raw)) {
+          skip = 'script';
+          continue;
+        }
+        if (/^<style\b[^>]*>$/i.test(raw)) {
+          skip = 'style';
+          continue;
+        }
+      }
+      out.push(child);
+    }
+    p.children = out;
+  });
+
+  // Sanitize HTML nodes in-place:
+  // - Inline HTML with no real tags (e.g., Slack '<!here>'): drop the node
+  // - Allowed tags preserved; attributes stripped; disallowed tags unwrapped
+  // - script/style contents removed entirely
   visit(
     cloned,
     'html',
@@ -84,7 +124,14 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
         parent.children.splice(index, 1, { type: 'text', value: res.value });
         return [SKIP, index];
       }
-      node.value = res.value; // kind === 'html'
+      // For inline contexts (paragraph phrasing), replace sanitized HTML with a text node
+      // so remark-stringify doesn't reflow/split inline tags. This intentionally renders
+      // the literal tag text in Linear.
+      if (parent.type === 'paragraph') {
+        parent.children.splice(index, 1, { type: 'text', value: res.value });
+        return [SKIP, index];
+      }
+      node.value = res.value; // kind === 'html' (block or other contexts)
     }
   );
 
