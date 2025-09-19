@@ -152,7 +152,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           lastIndex = re.lastIndex;
         }
 
-        // Autolinks (e.g., BOT-123) applied after above to avoid re-processing
+        // Autolinks (e.g., BOT-123) applied after above only when we had no other matches
         if (fragments.length === 0) {
           // No matches; try autolinks on the original text
           const frags2: PhrasingContent[] = [];
@@ -197,6 +197,46 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         }
       }
     );
+
+    // 3) Second pass: apply autolinks inside plain text fragments only (skip inside existing links)
+    if (autolinks.length > 0) {
+      visit(root, 'text', (node: Text, index, parent) => {
+        if (!parent || typeof index !== 'number') return;
+        if (parent.type === 'link') return; // do not modify link labels
+        const input = String(node.value ?? '');
+        let parts: PhrasingContent[] = [{ type: 'text', value: input }];
+        for (const rule of autolinks) {
+          const next: PhrasingContent[] = [];
+          for (const seg of parts) {
+            if (seg.type !== 'text') {
+              next.push(seg);
+              continue;
+            }
+            const tmp: PhrasingContent[] = [];
+            splitInclusive(
+              String(seg.value ?? ''),
+              rule.pattern,
+              (mm) => {
+                const url = templ(rule.urlTemplate, mm);
+                const label = templ(rule.labelTemplate ?? '$0', mm) || mm[0];
+                return {
+                  type: 'link',
+                  url,
+                  title: null,
+                  children: [{ type: 'text', value: label }],
+                };
+              },
+              tmp
+            );
+            next.push(...tmp);
+          }
+          parts = next;
+        }
+        if (parts.length) {
+          parent.children.splice(index, 1, ...parts);
+        }
+      });
+    }
   };
 };
 
