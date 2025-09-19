@@ -56,4 +56,41 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
     });
     expect(out).toContain('[BOT-123](https://linear.app/issue/BOT-123)');
   });
+
+  test('autolinks apply inside text fragments adjacent to a Markdown link and a Slack mention', async () => {
+    const input = [
+      'Start [Ex](https://ex.com) BOT-234 end.',
+      '<@U42> then BOT-345 after mention.',
+    ].join('\n');
+    const out = await formatFor(input, 'github', {
+      autolinks: {
+        linear: [
+          {
+            pattern: /BOT-(\d+)/g,
+            urlTemplate: 'https://linear.app/issue/BOT-$1',
+            labelTemplate: 'BOT-$1',
+          },
+        ],
+      },
+    });
+    expect(out).toContain('[BOT-234](https://linear.app/issue/BOT-234)');
+    expect(out).toContain('[BOT-345](https://linear.app/issue/BOT-345)');
+  });
+
+  test('autolinks are not created inside code, but still apply to adjacent text', async () => {
+    const input = 'Use `code BOT-456` then BOT-567';
+    const out = await formatFor(input, 'github', {
+      autolinks: {
+        linear: [
+          {
+            pattern: /BOT-(\d+)/g,
+            urlTemplate: 'https://linear.app/issue/BOT-$1',
+            labelTemplate: 'BOT-$1',
+          },
+        ],
+      },
+    });
+    expect(out).toContain('`code BOT-456`');
+    expect(out).toContain('[BOT-567](https://linear.app/issue/BOT-567)');
+  });
 });
