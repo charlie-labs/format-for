@@ -1,0 +1,6 @@
+before
+
+&lt;u&gt;ok&lt;/u&gt;&lt;script&gt;nope()&lt;/script&gt;
+
+after
+

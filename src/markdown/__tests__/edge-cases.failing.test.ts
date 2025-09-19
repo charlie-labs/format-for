@@ -15,15 +15,13 @@ describe('edge cases (documented failures)', () => {
     'autolinks: still apply when earlier fragments (e.g., Slack link) exist'
   );
 
-  test.fails(
-    'Linear HTML allowlist: mixed allowed + disallowed tags should be stripped',
-    async () => {
-      const input = '<u>ok</u><blink>nope</blink>';
-      const out = await formatFor(input, 'linear', { linearHtmlAllow: ['u'] });
-      // If any disallowed tag appears in the same HTML node, the whole node should be removed.
-      expect(out).not.toMatch(/<blink>|nope/);
-    }
-  );
+  test('Linear HTML allowlist: mixed allowed + disallowed tags should be stripped', async () => {
+    const input = '<u>ok</u><blink>nope</blink>';
+    const out = await formatFor(input, 'linear', { linearHtmlAllow: ['u'] });
+    // If any disallowed tag appears in the same HTML node, the whole paragraph should be removed.
+    expect(out).not.toMatch(/<blink>|nope/);
+    expect(out).not.toContain('ok');
+  });
 
   test.fails(
     'Slack link labels should be plain text (no formatting tokens)',
