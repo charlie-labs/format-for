@@ -1,6 +1,6 @@
 Start [Ex](https://ex.com) [BOT-234](https://linear.app/issue/BOT-234) end.
 
-@U42
+@U42 then [BOT-345](https://linear.app/issue/BOT-345) after mention.
 
 Ref [Label BOT-456][id]; code `inline BOT-567` then [BOT-678](https://linear.app/issue/BOT-678).
 
