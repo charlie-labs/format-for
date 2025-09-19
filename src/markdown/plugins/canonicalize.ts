@@ -152,40 +152,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           lastIndex = re.lastIndex;
         }
 
-        // Autolinks (e.g., BOT-123) applied after above only when we had no other matches
-        if (fragments.length === 0) {
-          // No matches; try autolinks on the original text
-          const frags2: PhrasingContent[] = [];
-          let s = input;
-          for (const rule of autolinks) {
-            const tmp: PhrasingContent[] = [];
-            s = splitInclusive(
-              s,
-              rule.pattern,
-              (mm) => {
-                const url = templ(rule.urlTemplate, mm);
-                const label = templ(rule.labelTemplate ?? '$0', mm) || mm[0];
-                return {
-                  type: 'link',
-                  url,
-                  title: null,
-                  children: [{ type: 'text', value: label }],
-                };
-              },
-              tmp
-            );
-            if (tmp.length) {
-              frags2.push(...tmp);
-            } else {
-              frags2.push({ type: 'text', value: s });
-            }
-            // Next rules operate on the concatenated plain text of previous step
-            s = frags2.map(valueOf).join('');
-          }
-          if (frags2.length) {
-            fragments.push(...frags2);
-          }
-        }
+        // Note: autolinks are applied in a dedicated second pass below.
 
         if (
           fragments.length &&
@@ -200,7 +167,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 
     // 3) Second pass: apply autolinks inside plain text fragments only (skip inside existing links)
     if (autolinks.length > 0) {
-      visit(root, 'text', (node: Text, index, parent) => {
+      visit(root, 'text', (node: Text, index, parent): void | number => {
         if (!parent || typeof index !== 'number') return;
         if (parent.type === 'link') return; // do not modify link labels
         const input = String(node.value ?? '');
@@ -232,9 +199,16 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           }
           parts = next;
         }
-        if (parts.length) {
-          parent.children.splice(index, 1, ...parts);
+        // No-op when nothing changed to avoid churn and re-visits
+        if (
+          parts.length === 1 &&
+          parts[0]?.type === 'text' &&
+          parts[0]?.value === input
+        ) {
+          return;
         }
+        parent.children.splice(index, 1, ...parts);
+        return index + parts.length; // skip over newly inserted nodes
       });
     }
   };
@@ -248,17 +222,6 @@ function isCodeLike(_node: Parent): boolean {
 
 function templ(tpl: string, m: RegExpExecArray): string {
   return tpl.replace(/\$(\d+)/g, (_, g1) => m[Number(g1)] ?? '');
-}
-
-function valueOf(n: PhrasingContent): string {
-  switch (n.type) {
-    case 'text':
-    case 'inlineCode':
-    case 'html':
-      return String(n.value ?? '');
-    default:
-      return '';
-  }
 }
 
 function splitInclusive(
