@@ -6,15 +6,14 @@ import {
   type AutoLinkRule,
   type DetailsNode,
   type MentionMaps,
-  type MentionNode,
 } from '../types.js';
 
 /**
  * Normalize mixed syntax into a canonical mdast:
  *  - Slack strikethrough: ~text~ -> delete
- *  - Slack angle forms & autolinks -> link/mention nodes
- *  - Linear @user -> link if mapped
- *  - Autolinks (e.g., BOT-123) via rules
+ *  - Slack angle forms (<@U…>, <#C…|…>, <!here>, <url|label>) are preserved as literal text
+ *  - Linear @user -> link if mapped via `maps.linear.users`
+ *  - Autolinks (e.g., BOT-123) via rules (left-to-right, never inside existing links)
  *  - Linear collapsible: paragraph starting with '+++ ' -> details node with next block as body
  */
 export type CanonicalizeOptions = {
@@ -73,7 +72,16 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
       root,
       'text',
       (node: Text, index: number | undefined, parent: Parent | undefined) => {
-        if (!parent || isCodeLike(parent)) return;
+        // Skip if there's no parent or we're inside an existing link/label node
+        if (
+          !parent ||
+          parent.type === 'link' ||
+          // Avoid autolinking within reference-style link labels as well
+          (parent as { type: string }).type === 'linkReference' ||
+          isCodeLike(parent)
+        ) {
+          return;
+        }
 
         const fragments: PhrasingContent[] = [];
         const input = String(node.value ?? '');
@@ -81,7 +89,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 
         // Composite regex covering several constructs; we will branch inside the loop
         const re =
-          /~([^~\s][^~]*?)~|<(?:(?:@([A-Z][A-Z0-9]+))|#([A-Z][A-Z0-9]+)\|([^>]+)|!((?:here|channel|everyone))|([^>|]+?)(?:\|([^>]*))?)>|@([a-zA-Z0-9._-]+)|/g;
+          /~([^~\s][^~]*?)~|<(?:(?:@([A-Z][A-Z0-9]+))|#([A-Z][A-Z0-9]+)\|([^>]+)|!((?:here|channel|everyone))|([^>|]+?)(?:\|([^>]*))?)>|@([a-zA-Z0-9._-]+)/g;
         re.lastIndex = 0;
         let m: RegExpExecArray | null;
         while ((m = re.exec(input))) {
@@ -101,39 +109,17 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
               children: [{ type: 'text', value: m[1] }],
             });
           } else if (m[2]) {
-            // <@U123>
-            const mention: MentionNode = {
-              type: 'mention',
-              data: { subtype: 'user', id: m[2] },
-              children: [],
-            };
-            fragments.push(mention);
+            // <@U123> — keep literal for cross-target fidelity
+            fragments.push({ type: 'text', value: whole });
           } else if (m[3]) {
-            // <#C123|name>
-            const mention: MentionNode = {
-              type: 'mention',
-              data: { subtype: 'channel', id: m[3], label: m[4] },
-              children: [],
-            };
-            fragments.push(mention);
+            // <#C123|name> — keep literal
+            fragments.push({ type: 'text', value: whole });
           } else if (m[5]) {
-            // <!here> / <!channel> / <!everyone>
-            const mention: MentionNode = {
-              type: 'mention',
-              data: { subtype: 'special', id: m[5] },
-              children: [],
-            };
-            fragments.push(mention);
+            // <!here> / <!channel> / <!everyone> — keep literal
+            fragments.push({ type: 'text', value: whole });
           } else if (m[6]) {
-            // <url|label?> or <url>
-            const url = m[6];
-            const label = m[7] ?? m[6];
-            fragments.push({
-              type: 'link',
-              url,
-              title: null,
-              children: [{ type: 'text', value: label }],
-            });
+            // <url|label?> or <url> — keep literal
+            fragments.push({ type: 'text', value: whole });
           } else if (m[8]) {
             // @user (Linear mapping)
             const key = m[8];
@@ -152,48 +138,35 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           lastIndex = re.lastIndex;
         }
 
-        // Autolinks (e.g., BOT-123) applied after above to avoid re-processing
+        // Push trailing text that follows the last match
+        if (lastIndex < input.length) {
+          fragments.push({ type: 'text', value: input.slice(lastIndex) });
+        }
+
+        // If nothing matched above, treat the entire node as a single text fragment
         if (fragments.length === 0) {
-          // No matches; try autolinks on the original text
-          const frags2: PhrasingContent[] = [];
-          let s = input;
-          for (const rule of autolinks) {
-            const tmp: PhrasingContent[] = [];
-            s = splitInclusive(
-              s,
-              rule.pattern,
-              (mm) => {
-                const url = templ(rule.urlTemplate, mm);
-                const label = templ(rule.labelTemplate ?? '$0', mm) || mm[0];
-                return {
-                  type: 'link',
-                  url,
-                  title: null,
-                  children: [{ type: 'text', value: label }],
-                };
-              },
-              tmp
+          fragments.push({ type: 'text', value: input });
+        }
+
+        // Apply autolinks to each plain-text fragment via a single left-to-right scan
+        const finalFrags: PhrasingContent[] = [];
+        for (const frag of fragments) {
+          if (frag.type === 'text' && autolinks.length) {
+            finalFrags.push(
+              ...applyAutolinksLeftToRight(frag.value ?? '', autolinks)
             );
-            if (tmp.length) {
-              frags2.push(...tmp);
-            } else {
-              frags2.push({ type: 'text', value: s });
-            }
-            // Next rules operate on the concatenated plain text of previous step
-            s = frags2.map(valueOf).join('');
-          }
-          if (frags2.length) {
-            fragments.push(...frags2);
+          } else {
+            finalFrags.push(frag);
           }
         }
 
         if (
-          fragments.length &&
+          finalFrags.length &&
           parent &&
           Array.isArray(parent.children) &&
           typeof index === 'number'
         ) {
-          parent.children.splice(index, 1, ...fragments);
+          parent.children.splice(index, 1, ...finalFrags);
         }
       }
     );
@@ -210,37 +183,85 @@ function templ(tpl: string, m: RegExpExecArray): string {
   return tpl.replace(/\$(\d+)/g, (_, g1) => m[Number(g1)] ?? '');
 }
 
-function valueOf(n: PhrasingContent): string {
-  switch (n.type) {
-    case 'text':
-    case 'inlineCode':
-    case 'html':
-      return String(n.value ?? '');
-    default:
-      return '';
+/**
+ * Autolink precedence: pick the earliest next match across all rules; ties
+ * are resolved by rule array order. Advances the cursor by the matched length
+ * and never duplicates or drops intervening text.
+ */
+function applyAutolinksLeftToRight(
+  input: string,
+  rules: AutoLinkRule[]
+): PhrasingContent[] {
+  if (!input) return [];
+  const out: PhrasingContent[] = [];
+  let pos = 0;
+  const len = input.length;
+
+  // Pre-clone regexes so we never mutate caller-provided instances
+  const regs = rules.map(
+    (r) => new RegExp(r.pattern.source, ensureGlobalFlag(r.pattern.flags))
+  );
+
+  while (pos < len) {
+    let bestIdx = -1;
+    let bestRule = -1;
+    let bestMatch: RegExpExecArray | null = null;
+
+    for (let i = 0; i < regs.length; i++) {
+      const re = regs[i];
+      if (!re) continue;
+      re.lastIndex = pos;
+      const m = re.exec(input);
+      if (!m) continue;
+      if (m.index < pos) continue; // defensive; shouldn't happen with lastIndex
+      if (bestIdx === -1 || m.index < bestIdx) {
+        bestIdx = m.index;
+        bestRule = i;
+        bestMatch = m;
+      }
+    }
+
+    if (!bestMatch || bestRule === -1 || bestIdx === -1) {
+      // No more matches; emit tail
+      if (pos < len) out.push({ type: 'text', value: input.slice(pos) });
+      break;
+    }
+
+    // Emit intervening text
+    if (bestIdx > pos) {
+      out.push({ type: 'text', value: input.slice(pos, bestIdx) });
+    }
+
+    // Emit link
+    const rule = rules[bestRule];
+    if (!rule) {
+      // Defensive: if rule is missing, emit the tail as plain text
+      if (pos < len) out.push({ type: 'text', value: input.slice(pos) });
+      break;
+    }
+    const url = templ(rule.urlTemplate, bestMatch);
+    const label = templ(rule.labelTemplate ?? '$0', bestMatch) || bestMatch[0];
+
+    if (bestMatch[0].length === 0) {
+      // Avoid infinite loop on zero-length matches: pass through one char
+      out.push({ type: 'text', value: input[pos] ?? '' });
+      pos += 1;
+      continue;
+    }
+
+    out.push({
+      type: 'link',
+      url,
+      title: null,
+      children: [{ type: 'text', value: label }],
+    });
+
+    pos = bestIdx + bestMatch[0].length;
   }
+
+  return out;
 }
 
-function splitInclusive(
-  input: string,
-  re: RegExp,
-  toNode: (m: RegExpExecArray) => PhrasingContent | null,
-  out: PhrasingContent[]
-): string {
-  let last = 0;
-  re.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(input))) {
-    if (match.index > last) {
-      out.push({ type: 'text', value: input.slice(last, match.index) });
-    }
-    const node = toNode(match);
-    out.push(node ?? { type: 'text', value: match[0] });
-    last = re.lastIndex;
-  }
-  const tail = input.slice(last);
-  if (tail) {
-    out.push({ type: 'text', value: tail });
-  }
-  return '';
+function ensureGlobalFlag(flags: string): string {
+  return flags.includes('g') ? flags : `${flags}g`;
 }
