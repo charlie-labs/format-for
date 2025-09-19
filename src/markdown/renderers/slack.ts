@@ -3,12 +3,10 @@ import {
   type BlockContent,
   type DefinitionContent,
   type List,
-  type ListItem,
   type PhrasingContent,
   type Root,
   type RootContent,
   type Table,
-  type TableRow,
 } from 'mdast';
 
 import { escapeSlackText } from '../utils/slackEscape.js';
@@ -136,7 +134,8 @@ function renderList(node: List, out: string[], depth: number): void {
   const start = typeof node.start === 'number' ? node.start : 1;
 
   for (let idx = 0; idx < node.children.length; idx++) {
-    const item = node.children[idx] as ListItem;
+    const item = node.children[idx];
+    if (!item) continue;
     const bullet = node.ordered ? `${start + idx}.` : '•';
     const indent = '   '.repeat(Math.min(depth, maxDepth - 1));
     const prefix = flattened ? `${indent}→` : `${indent}${bullet}`;

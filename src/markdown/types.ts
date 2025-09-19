@@ -93,9 +93,15 @@ declare module 'mdast' {
 // Small, centrally-defined unions/guards used across files
 export type InlineNode = PhrasingContent; // includes our `mention` via augmentation
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 export function isRoot(node: unknown): node is Root {
-  const n = node as { type?: unknown; children?: unknown };
-  return !!n && n.type === 'root' && Array.isArray(n.children);
+  if (!isRecord(node)) return false;
+  const typeVal = node['type'];
+  const childrenVal = node['children'];
+  return typeVal === 'root' && Array.isArray(childrenVal);
 }
 
 export function assertIsRoot(node: unknown): asserts node is Root {

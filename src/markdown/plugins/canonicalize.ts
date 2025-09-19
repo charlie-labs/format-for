@@ -17,17 +17,19 @@ import {
  *  - Autolinks (e.g., BOT-123) via rules
  *  - Linear collapsible: paragraph starting with '+++ ' -> details node with next block as body
  */
-export const remarkCanonicalizeMixed: Plugin<
-  [{ maps?: MentionMaps; autolinks?: AutoLinkRule[] }]
-> = (opts = {}) => {
-  const maps = (opts as { maps?: MentionMaps }).maps ?? {};
-  const linearUsers = maps.linear?.users ?? {};
-  const autolinks = (opts as { autolinks?: AutoLinkRule[] }).autolinks ?? [];
+export type CanonicalizeOptions = {
+  maps?: MentionMaps;
+  autolinks?: AutoLinkRule[];
+};
 
-  return (tree) => {
-    // Visitor handles types; for the block-level transform we need a Root
-    if (!('children' in (tree as object))) return;
-    const root = tree as Root;
+export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
+  opts?: CanonicalizeOptions
+) => {
+  const maps = opts?.maps ?? {};
+  const linearUsers = maps.linear?.users ?? {};
+  const autolinks = opts?.autolinks ?? [];
+
+  return (root: Root) => {
     // 1) Block-level: '+++ Title' → details
     for (let i = 0; i < root.children.length; i++) {
       const node = root.children[i];

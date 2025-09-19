@@ -25,7 +25,7 @@ export function parseToCanonicalMdast(
 
   const ast = processor.parse(String(input));
   // Apply transforms synchronously to produce the canonical tree
-  const out = processor.runSync(ast as never);
+  const out = processor.runSync(ast);
   assertIsRoot(out);
   return out;
 }
