@@ -183,7 +183,9 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         let parts: PhrasingContent[] = [{ type: 'text', value: input }];
         for (const rule of autolinks) {
           // Clone once per rule and reset between segments to avoid `lastIndex` bleed
-          const re = new RegExp(rule.pattern.source, rule.pattern.flags);
+          const baseFlags = rule.pattern.flags;
+          const flags = baseFlags.includes('g') ? baseFlags : baseFlags + 'g';
+          const re = new RegExp(rule.pattern.source, flags);
           const next: PhrasingContent[] = [];
           for (const seg of parts) {
             if (seg.type !== 'text') {
