@@ -1,0 +1,4 @@
+Here is a footnote reference.
+
+Inline math: $e^{i\pi} + 1 = 0$ (treated as text).
+

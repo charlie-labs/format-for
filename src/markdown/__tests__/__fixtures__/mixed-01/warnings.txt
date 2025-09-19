@@ -1,0 +1,6 @@
+Slack: nested lists ≥3 levels flattened
+Slack: image converted to link
+Slack: table downgraded to code block
+Slack: stripped raw HTML
+Linear: stripped HTML <script>
+Linear: stripped HTML <span>

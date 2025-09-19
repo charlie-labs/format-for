@@ -1,0 +1,1 @@
+Slack: nested lists ≥3 levels flattened

@@ -1,12 +1,14 @@
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 import { formatFor } from './index.js';
 
 describe('formatFor', () => {
   async function withWarnSpy<T>(
-    fn: (warn: ReturnType<typeof spyOn>) => Promise<T> | T
+    fn: (warn: ReturnType<typeof vi.spyOn>) => Promise<T> | T
   ) {
-    const warn = spyOn(console, 'warn');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
+      /* noop */
+    });
     try {
       return await fn(warn);
     } finally {
@@ -54,16 +56,16 @@ describe('formatFor', () => {
 
   test('linear: details -> +++ fences and HTML stripping allowlist', async () => {
     const md = `<details><summary>More</summary>Body</details>\n\n<script>alert(1)</script><u>ok</u>`;
-    const warn = spyOn(console, 'warn');
-    const out = await formatFor(md, 'linear');
-    expect(out).toContain('+++ More');
-    expect(out).toContain('Body');
-    expect(out).toContain('+++');
-    // <u> kept, <script> stripped
-    expect(out).toContain('<u>ok</u>');
-    expect(out).not.toContain('<script>');
-    expect(warn).toHaveBeenCalled();
-    warn.mockRestore();
+    await withWarnSpy(async (warn) => {
+      const out = await formatFor(md, 'linear');
+      expect(out).toContain('+++ More');
+      expect(out).toContain('Body');
+      expect(out).toContain('+++');
+      // <u> kept, <script> stripped
+      expect(out).toContain('<u>ok</u>');
+      expect(out).not.toContain('<script>');
+      expect(warn).toHaveBeenCalled();
+    });
   });
 
   test('slack: ~strike~ normalized', async () => {

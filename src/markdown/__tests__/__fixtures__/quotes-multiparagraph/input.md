@@ -1,0 +1,6 @@
+> First paragraph line 1
+>
+> First paragraph line 2
+
+> Second paragraph after a blank line
+> still quoted

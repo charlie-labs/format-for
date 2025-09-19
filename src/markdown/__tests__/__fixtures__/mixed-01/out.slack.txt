@@ -1,0 +1,30 @@
+*Title*
+
+This is *bold*, _italics_, and ~strike~ plus ~strike2~.
+
+• [ ] Task one
+• Item two
+  • nested
+    • deeper
+
+See <https://ex.com|site>.
+
+<https://img.example/x.png|alt>
+
+```
+| a | b |
+| --- | --- |
+| 1 | 2 |
+```
+
+> Quote line 1
+> Line 2
+
+Inline `code <not-escaped> & stays` section.
+
+```
+fenced <block> & stays
+```
+
+
+

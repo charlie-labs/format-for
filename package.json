@@ -8,13 +8,15 @@
   "zshy": "./src/index.ts",
   "scripts": {
     "build": "bun run --bun zshy",
-    "ci": "bun run typecheck && bun run lint && bun run test",
+    "ci": "bun run typecheck && bun run lint && bun run coverage",
     "clean": "rm -rf node_modules",
     "fix": "eslint --fix --quiet . ; prettier --write --log-level=silent .",
     "lint": "eslint . && prettier --check .",
     "prepare": "husky",
     "prepublishOnly": "bun run build",
-    "test": "bun test",
+    "test": "vitest run --reporter=dot",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage --reporter=dot && bun scripts/check-coverage.mjs",
     "typecheck": "tsc --noEmit"
   },
   "lint-staged": {
@@ -43,13 +45,17 @@
   },
   "devDependencies": {
     "@charlie-labs/config": "^0.0.12",
+    "@vitest/coverage-c8": "^0.33.0",
     "@types/bun": "^1.2.20",
+    "c8": "^10.1.2",
     "eslint": "^9.34.0",
+    "fast-check": "^3.22.0",
     "husky": "^9.1.7",
     "knip": "^5.63.1",
     "lint-staged": "^16.1.6",
     "np": "^10.2.0",
     "prettier": "^3.6.2",
+    "vitest": "^0.33.0",
     "typescript": "^5.9.2",
     "zshy": "^0.3.5"
   },
