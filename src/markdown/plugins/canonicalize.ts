@@ -1,6 +1,6 @@
 import { type Parent, type PhrasingContent, type Root, type Text } from 'mdast';
 import { type Plugin } from 'unified';
-import { visit } from 'unist-util-visit';
+import { CONTINUE, visit } from 'unist-util-visit';
 
 import {
   type AutoLinkRule,
@@ -167,12 +167,17 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 
     // 3) Second pass: apply autolinks inside plain text fragments only (skip inside existing links)
     if (autolinks.length > 0) {
-      visit(root, 'text', (node: Text, index, parent): void | number => {
+      visit(root, 'text', (node: Text, index, parent) => {
         if (!parent || typeof index !== 'number') return;
-        if (parent.type === 'link') return; // do not modify link labels
+        // do not modify labels of existing links or reference-style links
+        if (parent.type === 'link' || parent.type === 'linkReference') {
+          return;
+        }
         const input = String(node.value ?? '');
         let parts: PhrasingContent[] = [{ type: 'text', value: input }];
         for (const rule of autolinks) {
+          // Clone once per rule and reset between segments to avoid `lastIndex` bleed
+          const re = new RegExp(rule.pattern.source, rule.pattern.flags);
           const next: PhrasingContent[] = [];
           for (const seg of parts) {
             if (seg.type !== 'text') {
@@ -180,9 +185,10 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
               continue;
             }
             const tmp: PhrasingContent[] = [];
+            re.lastIndex = 0;
             splitInclusive(
               String(seg.value ?? ''),
-              rule.pattern,
+              re,
               (mm) => {
                 const url = templ(rule.urlTemplate, mm);
                 const label = templ(rule.labelTemplate ?? '$0', mm) || mm[0];
@@ -208,7 +214,8 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           return;
         }
         parent.children.splice(index, 1, ...parts);
-        return index + parts.length; // skip over newly inserted nodes
+        // Continue after the inserted range to avoid revisiting freshly-added nodes
+        return [CONTINUE, index + parts.length];
       });
     }
   };
