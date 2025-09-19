@@ -1,4 +1,10 @@
-import { type Parent, type PhrasingContent, type Root, type Text } from 'mdast';
+import {
+  type Link,
+  type Parent,
+  type PhrasingContent,
+  type Root,
+  type Text,
+} from 'mdast';
 import { type Plugin } from 'unified';
 import { visit } from 'unist-util-visit';
 
@@ -30,6 +36,32 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   const autolinks = opts?.autolinks ?? [];
 
   return (root: Root) => {
+    // 0) Pre-pass: fix Slack-style autolinks that `remark-parse` mis-parses as a
+    //    single link node whose URL contains a pipe. Example input:
+    //      "<https://a.co|A>" → link { url: 'https://a.co|A', text: 'https://a.co|A' }
+    //    We want a proper mdast link: url: 'https://a.co', children: [Text('A')]
+    visit(root, 'link', (node: Link) => {
+      const url = String(node.url ?? '');
+      if (!url.includes('|')) return;
+      // Only fix the specific mis-parse shape produced by remark for `<url|label>`:
+      // a link whose single text child equals the URL string.
+      if (
+        node.children.length !== 1 ||
+        node.children[0]?.type !== 'text' ||
+        String(node.children[0].value ?? '') !== url
+      ) {
+        return;
+      }
+      // '|' is not valid in URLs; treat the first '|' as Slack label separator
+      const parts = url.split('|', 2);
+      const u = parts[0] ?? url;
+      const labelRaw = parts[1];
+      const label = (labelRaw ?? u).trim();
+      node.url = u;
+      node.title = null;
+      node.children = [{ type: 'text', value: label }];
+    });
+
     // 1) Block-level: '+++ Title' → details
     for (let i = 0; i < root.children.length; i++) {
       const node = root.children[i];
