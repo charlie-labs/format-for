@@ -1,0 +1,18 @@
+{
+  "autolinks": {
+    "linear": [
+      {
+        "pattern": "\\bBOT-(\\d+)\\b",
+        "flags": "g",
+        "urlTemplate": "https://linear.app/acme/issue/BOT-$1",
+        "labelTemplate": "$0"
+      },
+      {
+        "pattern": "\\bOPS-(\\d+)\\b",
+        "flags": "g",
+        "urlTemplate": "https://linear.app/acme/issue/OPS-$1",
+        "labelTemplate": "$0"
+      }
+    ]
+  }
+}

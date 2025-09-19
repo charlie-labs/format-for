@@ -77,7 +77,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           !parent ||
           parent.type === 'link' ||
           // Avoid autolinking within reference-style link labels as well
-          (parent as { type: string }).type === 'linkReference' ||
+          parent.type === 'linkReference' ||
           isCodeLike(parent)
         ) {
           return;
@@ -152,9 +152,13 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         const finalFrags: PhrasingContent[] = [];
         for (const frag of fragments) {
           if (frag.type === 'text' && autolinks.length) {
-            finalFrags.push(
-              ...applyAutolinksLeftToRight(frag.value ?? '', autolinks)
-            );
+            const v = frag.value ?? '';
+            // Keep Slack angle literals intact; do not autolink inside
+            if (isSlackAngleLiteral(v)) {
+              finalFrags.push(frag);
+            } else {
+              finalFrags.push(...applyAutolinksLeftToRight(v, autolinks));
+            }
           } else {
             finalFrags.push(frag);
           }
@@ -177,6 +181,17 @@ function isCodeLike(_node: Parent): boolean {
   // Text nodes never appear under `code`/`inlineCode` (they are Literals),
   // so this is effectively a no-op guard to mirror previous behavior.
   return false;
+}
+
+// Detect Slack angle literals such as:
+//  - <@U123>
+//  - <#C123|name>
+//  - <!here> / <!channel> / <!everyone>
+//  - <url|label> or <url>
+function isSlackAngleLiteral(s: string): boolean {
+  return /^<(?:@(?:[A-Z0-9]+)|#(?:[A-Z0-9]+)(?:\|[^>]+)?|!(?:here|channel|everyone|subteam\^[A-Z0-9]+(?:\|[^>]+)?)|[^>|]+(?:\|[^>]+)?)>$/.test(
+    s
+  );
 }
 
 function templ(tpl: string, m: RegExpExecArray): string {
