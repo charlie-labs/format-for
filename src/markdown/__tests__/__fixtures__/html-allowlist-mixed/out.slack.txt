@@ -1,2 +1,0 @@
-Here is html: &lt;u&gt;ok&lt;/u&gt;&lt;blink&gt;nope&lt;/blink&gt;.
-

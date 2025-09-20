@@ -1,2 +1,0 @@
-Click &lt;em class="x" onclick="alert(1)"&gt;safe&lt;/em&gt; and &lt;code style="color:red"&gt;code&lt;/code&gt;.
-
