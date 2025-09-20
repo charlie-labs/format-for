@@ -150,8 +150,8 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
   };
 
   return unified()
-    .use(remarkStringify, stringifyOpts)
     .use(remarkGfm)
+    .use(remarkStringify, stringifyOpts)
     .stringify(cloned);
 }
 
