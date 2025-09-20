@@ -44,7 +44,7 @@ describe('fixtures: exact outputs per target + warnings', () => {
         const input = readFileSync(join(fx.path, 'input.md'), 'utf8');
         const expected = readMaybe(join(fx.path, 'out.github.md'));
         if (expected != null) {
-          const out = await formatFor(input, 'github');
+          const out = await formatFor.github(input);
           expect(out).toBe(expected);
         }
       });
@@ -57,7 +57,7 @@ describe('fixtures: exact outputs per target + warnings', () => {
             ?.split('\n')
             .filter(Boolean) ?? [];
         if (expected != null) {
-          const out = await formatFor(input, 'slack');
+          const out = await formatFor.slack(input);
           expect(out).toBe(expected);
         }
         if (expectedWarnings.length > 0) {
@@ -72,7 +72,7 @@ describe('fixtures: exact outputs per target + warnings', () => {
         const input = readFileSync(join(fx.path, 'input.md'), 'utf8');
         const expected = readMaybe(join(fx.path, 'out.linear.md'));
         if (expected != null) {
-          const out = await formatFor(input, 'linear');
+          const out = await formatFor.linear(input);
           expect(out).toBe(expected);
         }
       });

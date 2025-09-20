@@ -12,8 +12,8 @@ describe('round-trip idempotency (supported constructs only)', () => {
       '',
       '> A quoted line',
     ].join('\n');
-    const once = await formatFor(input, 'slack');
-    const twice = await formatFor(once, 'slack');
+    const once = await formatFor.slack(input);
+    const twice = await formatFor.slack(once);
     expect(twice).toBe(once);
   });
 
@@ -25,8 +25,8 @@ describe('round-trip idempotency (supported constructs only)', () => {
       '',
       '```\nconst x = 1;\n```',
     ].join('\n');
-    const once = await formatFor(input, 'github');
-    const twice = await formatFor(once, 'github');
+    const once = await formatFor.github(input);
+    const twice = await formatFor.github(once);
     expect(twice).toBe(once);
   });
 
@@ -40,8 +40,8 @@ describe('round-trip idempotency (supported constructs only)', () => {
       '',
       '+++',
     ].join('\n');
-    const once = await formatFor(input, 'linear');
-    const twice = await formatFor(once, 'linear');
+    const once = await formatFor.linear(input);
+    const twice = await formatFor.linear(once);
     expect(twice).toBe(once);
   });
 });

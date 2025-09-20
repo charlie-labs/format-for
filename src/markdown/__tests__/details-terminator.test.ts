@@ -8,11 +8,11 @@ describe('Linear collapsible fences', () => {
       '\n'
     );
 
-    const gh = await formatFor(input, 'github');
+    const gh = await formatFor.github(input);
     expect(gh).toContain('+++ Title');
     expect(gh).not.toContain('<summary>Title</summary>');
 
-    const linear = await formatFor(input, 'linear');
+    const linear = await formatFor.linear(input);
     expect(linear).toContain('+++ Title');
     expect(linear).toContain('Body without close');
     expect(linear).not.toContain('\n+++\n');

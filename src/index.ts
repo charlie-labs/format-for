@@ -1,6 +1,7 @@
 export { formatFor } from './markdown/format.js';
 export type {
   AutoLinkRule,
+  FormatFn,
   FormatFor,
   FormatOptions,
   FormatTarget,

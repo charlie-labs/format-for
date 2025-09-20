@@ -17,7 +17,7 @@ describe('edge cases (documented failures)', () => {
 
   test('Linear HTML allowlist: mixed allowed + disallowed tags should be stripped', async () => {
     const input = '<u>ok</u><blink>nope</blink>';
-    const out = await formatFor(input, 'linear', { linearHtmlAllow: ['u'] });
+    const out = await formatFor.linear(input);
     // If any disallowed tag appears in the same HTML node, the whole paragraph should be removed.
     expect(out).not.toMatch(/<blink>|nope/);
     expect(out).not.toContain('ok');
@@ -27,7 +27,7 @@ describe('edge cases (documented failures)', () => {
     'Slack link labels should be plain text (no formatting tokens)',
     async () => {
       const input = 'Check <https://ex.com|*Bold* _Em_>';
-      const out = await formatFor(input, 'slack');
+      const out = await formatFor.slack(input);
       // Expect sanitized label without `*` or `_` markers.
       expect(out).toContain('<https://ex.com|Bold Em>');
     }
