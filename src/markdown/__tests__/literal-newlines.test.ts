@@ -23,6 +23,22 @@ describe('literal "\\n" handling', () => {
     expect(out).toContain('Hello\nworld');
   });
 
+  test('Inside link labels (including nested formatting), literal "\\n" collapses to a space', async () => {
+    const md = `See [A *B* C\\nD](https://ex.com) and also [X\\nY](https://ex.com)`;
+    const expectGithub = await formatFor(md, 'github');
+    const expectLinear = await formatFor(md, 'linear');
+    const expectSlack = await formatFor(md, 'slack');
+
+    // GitHub/Linear should keep formatting, and the label should not contain a literal "\\n".
+    expect(expectGithub).not.toContain('\\n');
+    expect(expectLinear).not.toContain('\\n');
+    expect(expectGithub).toContain('[A *B* C D](https://ex.com)');
+    expect(expectLinear).toContain('[A *B* C D](https://ex.com)');
+
+    // Slack should render links with a label where the break became a space (no newline in label).
+    expect(expectSlack).toContain('<https://ex.com|A _B_ C D>');
+    expect(expectSlack).not.toMatch(/A _B_ C\nD/);
+  });
   test('Outputs never leak a literal "\\n" outside code/inlineCode', async () => {
     const safe = fc
       .string()
