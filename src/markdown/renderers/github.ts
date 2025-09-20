@@ -1,6 +1,8 @@
 import { type Html, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
-import remarkStringify, { type Options as RemarkStringifyOptions } from 'remark-stringify';
+import remarkStringify, {
+  type Options as RemarkStringifyOptions,
+} from 'remark-stringify';
 import { unified } from 'unified';
 import { SKIP, visit } from 'unist-util-visit';
 
@@ -56,11 +58,13 @@ export function renderGithub(ast: Root): string {
     }
   );
 
-  return unified()
-    // Register GFM extensions before stringify so the compiler picks them up
-    .use(remarkGfm)
-    .use(remarkStringify, stringifyOptions)
-    .stringify(cloned);
+  return (
+    unified()
+      // Register GFM extensions before stringify so the compiler picks them up
+      .use(remarkGfm)
+      .use(remarkStringify, stringifyOptions)
+      .stringify(cloned)
+  );
 }
 
 function convertNestedDetails(children: Root['children']): void {

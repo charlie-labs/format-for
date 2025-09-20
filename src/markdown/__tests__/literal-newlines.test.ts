@@ -25,9 +25,9 @@ describe('literal "\\n" handling', () => {
 
   test('Inside link labels (including nested formatting), literal "\\n" collapses to a space', async () => {
     const md = `See [A *B* C\\nD](https://ex.com) and also [X\\nY](https://ex.com)`;
-    const expectGithub = await formatFor(md, 'github');
-    const expectLinear = await formatFor(md, 'linear');
-    const expectSlack = await formatFor(md, 'slack');
+    const expectGithub = await formatFor.github(md);
+    const expectLinear = await formatFor.linear(md);
+    const expectSlack = await formatFor.slack(md);
 
     // GitHub/Linear should keep formatting, and the label should not contain a literal "\\n".
     expect(expectGithub).not.toContain('\\n');
@@ -49,10 +49,12 @@ describe('literal "\\n" handling', () => {
     await fc.assert(
       fc.asyncProperty(safe, async (s) => {
         const input = `A\\nB ${s}`;
-        for (const t of ['github', 'linear', 'slack'] as const) {
-          const out = await formatFor(input, t);
-          expect(out).not.toContain('\\n');
-        }
+        const outGithub = await formatFor.github(input);
+        const outLinear = await formatFor.linear(input);
+        const outSlack = await formatFor.slack(input);
+        expect(outGithub).not.toContain('\\n');
+        expect(outLinear).not.toContain('\\n');
+        expect(outSlack).not.toContain('\\n');
       }),
       { numRuns: 30, verbose: true, interruptAfterTimeLimit: 10000 }
     );
