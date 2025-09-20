@@ -15,7 +15,11 @@ import {
   type FormatTarget,
   type MentionMaps,
 } from '../markdown/types.js';
-import { buildLinearAutolinks, loadLinearIndex } from './linear.js';
+import {
+  buildLinearAutolinks,
+  type LinearBits,
+  loadLinearIndex,
+} from './linear.js';
 import { loadSlackCatalog } from './slack.js';
 
 type Snapshot = {
@@ -61,24 +65,34 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
   if ((needSlack || needLinear) && !inflight) {
     inflight = (async () => {
       try {
-        const results = await Promise.allSettled([
+        const emptySlack: NonNullable<MentionMaps['slack']> = {
+          users: {},
+          channels: {},
+        };
+        const emptyLinear: LinearBits = {
+          orgSlug: undefined,
+          teamKeys: [],
+          users: {},
+        };
+        const promises: [
+          Promise<NonNullable<MentionMaps['slack']>>,
+          Promise<LinearBits>,
+        ] = [
           needSlack && slackToken
             ? loadSlackCatalog(slackToken)
-            : Promise.resolve<Partial<MentionMaps['slack']>>({}),
+            : Promise.resolve(emptySlack),
           needLinear && linearToken
             ? loadLinearIndex(linearToken)
-            : Promise.resolve({ orgSlug: undefined, teamKeys: [], users: {} }),
-        ] as const);
-
-        const slackRes = results[0];
-        const linearRes = results[1];
+            : Promise.resolve(emptyLinear),
+        ];
+        const [slackRes, linearRes] = await Promise.allSettled(promises);
 
         const nextMaps: MentionMaps = { ...(current?.maps ?? {}) };
         if (needSlack && slackRes.status === 'fulfilled') {
-          const slackVal = slackRes.value as
-            | NonNullable<MentionMaps['slack']>
-            | undefined;
-          if (slackVal && Object.keys(slackVal).length > 0) {
+          const slackVal = slackRes.value ?? emptySlack;
+          const usersCount = Object.keys(slackVal.users ?? {}).length;
+          const channelsCount = Object.keys(slackVal.channels ?? {}).length;
+          if (usersCount + channelsCount > 0) {
             nextMaps.slack = slackVal;
           }
           lastSlackLoad = Date.now();
@@ -133,9 +147,11 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
 export async function ensureDefaultsForTarget(
   target: FormatTarget
 ): Promise<{ maps?: MentionMaps; autolinks?: { linear?: AutoLinkRule[] } }> {
-  const hasSlack =
-    !!current?.maps?.slack &&
-    Object.keys(current?.maps?.slack ?? {}).length > 0;
+  const slackUsersCount = Object.keys(current?.maps?.slack?.users ?? {}).length;
+  const slackChannelsCount = Object.keys(
+    current?.maps?.slack?.channels ?? {}
+  ).length;
+  const hasSlack = slackUsersCount + slackChannelsCount > 0;
   const hasLinearUsers =
     !!current?.maps?.linear?.users &&
     Object.keys(current?.maps?.linear?.users ?? {}).length > 0;

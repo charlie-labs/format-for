@@ -9,13 +9,23 @@ function mergeMapsForTarget(
   a?: FormatOptions['maps'],
   b?: FormatOptions['maps']
 ): NonNullable<FormatOptions['maps']> {
-  const merged = { ...(a ?? {}), ...(b ?? {}) } as NonNullable<
-    FormatOptions['maps']
-  >;
+  // Construct the target-scoped map explicitly to avoid assertions.
   const out: NonNullable<FormatOptions['maps']> = {};
-  if (target === 'slack' && merged.slack) out.slack = merged.slack;
-  if ((target === 'github' || target === 'linear') && merged.linear) {
-    out.linear = merged.linear;
+  switch (target) {
+    case 'slack': {
+      if (a?.slack) out.slack = a.slack;
+      if (b?.slack) out.slack = b.slack; // caller overrides defaults when provided
+      break;
+    }
+    case 'github':
+    case 'linear': {
+      if (a?.linear) out.linear = a.linear;
+      if (b?.linear) out.linear = b.linear; // caller overrides defaults when provided
+      break;
+    }
+    default: {
+      break; // no maps for other targets
+    }
   }
   return out;
 }
@@ -24,9 +34,24 @@ function mergeAutolinks(
   a?: FormatOptions['autolinks'],
   b?: FormatOptions['autolinks']
 ): NonNullable<FormatOptions['autolinks']> {
-  return { ...(a ?? {}), ...(b ?? {}) } as NonNullable<
-    FormatOptions['autolinks']
-  >;
+  // Deep-merge by family, concatenating arrays instead of overwriting.
+  // De-duplicate by (pattern.source, pattern.flags, urlTemplate, labelTemplate).
+  const out: NonNullable<FormatOptions['autolinks']> = {};
+  const combined = [...(a?.linear ?? []), ...(b?.linear ?? [])];
+  if (combined.length > 0) {
+    const seen = new Set<string>();
+    const linear: NonNullable<
+      NonNullable<FormatOptions['autolinks']>['linear']
+    > = [];
+    for (const r of combined) {
+      const key = `${r.pattern.source}/${r.pattern.flags}|${r.urlTemplate}|${r.labelTemplate ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      linear.push(r);
+    }
+    out.linear = linear;
+  }
+  return out;
 }
 
 async function buildFor(
