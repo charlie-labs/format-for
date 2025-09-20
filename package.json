@@ -42,7 +42,7 @@
     "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {
-    "@charlie-labs/config": "^0.0.13",
+    "@charlie-labs/config": "^0.0.14",
     "@types/bun": "^1.2.20",
     "@types/mdast": "^4.0.4",
     "@types/unist": "^3.0.3",
