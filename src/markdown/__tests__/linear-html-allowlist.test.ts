@@ -5,7 +5,7 @@ import { formatFor } from '../../index.js';
 describe('Linear HTML allowlist (strict)', () => {
   test('keeps paragraph with only allowed tags', async () => {
     const input = '<u>keep</u><br />and more';
-    const out = await formatFor(input, 'linear', {
+    const out = await formatFor.linear(input, {
       linearHtmlAllow: ['u', 'br'],
     });
     expect(out).toContain('<u>keep</u>');
@@ -15,7 +15,7 @@ describe('Linear HTML allowlist (strict)', () => {
 
   test('keeps HTML with no actual tags (comments/whitespace)', async () => {
     const input = '<!-- a comment -->';
-    const out = await formatFor(input, 'linear');
+    const out = await formatFor.linear(input);
     expect(out).toContain('<!-- a comment -->');
   });
 
@@ -27,7 +27,7 @@ describe('Linear HTML allowlist (strict)', () => {
       '',
       'after',
     ].join('\n');
-    const out = await formatFor(input, 'linear', { linearHtmlAllow: ['u'] });
+    const out = await formatFor.linear(input, { linearHtmlAllow: ['u'] });
     // Middle paragraph removed entirely
     expect(out).not.toMatch(/<script>|nope\(\)/);
     expect(out).not.toContain('ok');

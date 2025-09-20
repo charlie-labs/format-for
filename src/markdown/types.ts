@@ -41,18 +41,25 @@ export interface FormatOptions {
   linearHtmlAllow?: ('details' | 'summary' | 'u' | 'sub' | 'sup' | 'br')[];
 }
 
-/**
- * Main entry point: return just the rendered string.
- * Degradations print to console.warn (best effort).
- * @param input mixed Slack/Linear/GFM
- * @param target 'github' | 'slack' | 'linear'
- * @param options maps/autolinks/allowlist
- */
-export type FormatFor = (
+/** Function signature for a target-specific formatter. */
+export type FormatFn = (
   input: string,
-  target: FormatTarget,
   options?: FormatOptions
 ) => Promise<string>;
+
+/**
+ * Public API surface.
+ *
+ * Usage:
+ *   await formatFor.github(markdown, opts)
+ *   await formatFor.slack(markdown, opts)
+ *   await formatFor.linear(markdown, opts)
+ */
+export interface FormatFor {
+  github: FormatFn;
+  slack: FormatFn;
+  linear: FormatFn;
+}
 
 // ——— mdast custom nodes (first‑class, typed) ———
 

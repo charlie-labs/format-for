@@ -22,8 +22,13 @@ describe('property tests', () => {
         fc.tuple(fc.string(), safeStr, safeFence),
         async ([a, b, c]) => {
           const inline = `${a}\n\nHere is \`${b}\` inside text.\n\n\`\`\`\n${c}\n\`\`\`\n`;
-          for (const target of ['github', 'slack', 'linear'] as const) {
-            const out = await formatFor(inline, target);
+          const targets: (keyof typeof formatFor)[] = [
+            'github',
+            'slack',
+            'linear',
+          ];
+          for (const target of targets) {
+            const out = await formatFor[target](inline);
             // Inline code preserved
             expect(out).toContain(b);
             // Fenced code preserved line-for-line
@@ -43,7 +48,7 @@ describe('property tests', () => {
   test('Slack: never emit >>> unless block is at end (we never emit it)', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (s) => {
-        const out = await formatFor(`> ${s}\n\npara`, 'slack');
+        const out = await formatFor.slack(`> ${s}\n\npara`);
         const idx = out.indexOf('>>>');
         expect(idx).toBe(-1);
       }),

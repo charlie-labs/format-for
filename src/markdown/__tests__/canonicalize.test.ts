@@ -14,7 +14,7 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
       '@riley mentions',
     ].join('\n');
 
-    const outSlack = await formatFor(input, 'slack', {
+    const outSlack = await formatFor.slack(input, {
       maps: {
         linear: {
           users: {
@@ -28,7 +28,7 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
     expect(outSlack).toContain('&lt;!here&gt;');
     expect(outSlack).toContain('<https://ex.com|Ex>');
 
-    const outLinear = await formatFor(input, 'linear', {
+    const outLinear = await formatFor.linear(input, {
       maps: {
         linear: {
           users: {
@@ -43,7 +43,7 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
 
   test('autolink rules are applied', async () => {
     const input = 'Reference BOT-123 should link.';
-    const out = await formatFor(input, 'github', {
+    const out = await formatFor.github(input, {
       autolinks: {
         linear: [
           {
@@ -62,7 +62,7 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
       'Start [Ex](https://ex.com) BOT-234 end.',
       '<@U42> then BOT-345 after mention.',
     ].join('\n');
-    const out = await formatFor(input, 'github', {
+    const out = await formatFor.github(input, {
       autolinks: {
         linear: [
           {
@@ -79,7 +79,7 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
 
   test('autolinks are not created inside code, but still apply to adjacent text', async () => {
     const input = 'Use `code BOT-456` then BOT-567';
-    const out = await formatFor(input, 'github', {
+    const out = await formatFor.github(input, {
       autolinks: {
         linear: [
           {
