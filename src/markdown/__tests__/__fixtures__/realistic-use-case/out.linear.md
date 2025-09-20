@@ -57,4 +57,3 @@ Standalone HTML block that should be stripped on Slack/Linear
 Footnote ref[^1].
 
 [^1]: This is a footnote with a Slack user @user and a Slack link [ex](https://ex.com).
-

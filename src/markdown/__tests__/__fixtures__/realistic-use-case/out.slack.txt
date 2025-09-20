@@ -50,4 +50,3 @@ Footnote ref.
 
 This is a footnote with a Slack user <@U0FOOT> and a Slack link <https://ex.com|ex>.
 
-
