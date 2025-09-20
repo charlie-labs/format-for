@@ -37,6 +37,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 ) => {
   const maps = opts?.maps ?? {};
   const linearUsers = maps.linear?.users ?? {};
+  const slackUsers = maps.slack?.users ?? {};
   const autolinks = opts?.autolinks ?? [];
 
   return (root: Root) => {
@@ -138,18 +139,33 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
               children: [{ type: 'text', value: label }],
             });
           } else if (m[8]) {
-            // @user (Linear mapping)
+            // @user → prefer Slack mention when a Slack map is provided, otherwise
+            // fall back to Linear user link mapping if present.
             const key = m[8];
-            const hit = linearUsers[key];
-            if (hit?.url) {
-              fragments.push({
-                type: 'link',
-                url: hit.url,
-                title: null,
-                children: [{ type: 'text', value: hit.label ?? `@${key}` }],
-              });
+            const slackHit = slackUsers[key];
+            if (slackHit?.id) {
+              const mention: MentionNode = {
+                type: 'mention',
+                data: {
+                  subtype: 'user',
+                  id: slackHit.id,
+                  label: slackHit.label,
+                },
+                children: [],
+              };
+              fragments.push(mention);
             } else {
-              fragments.push({ type: 'text', value: whole });
+              const hit = linearUsers[key];
+              if (hit?.url) {
+                fragments.push({
+                  type: 'link',
+                  url: hit.url,
+                  title: null,
+                  children: [{ type: 'text', value: hit.label ?? `@${key}` }],
+                });
+              } else {
+                fragments.push({ type: 'text', value: whole });
+              }
             }
           }
           lastIndex = re.lastIndex;
