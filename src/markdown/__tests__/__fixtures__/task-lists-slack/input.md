@@ -1,0 +1,3 @@
+- [x] done item
+- [ ] todo item
+- plain item (not a task)
