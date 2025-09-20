@@ -15,6 +15,8 @@ import {
   type FormatTarget,
   type MentionMaps,
 } from '../markdown/types.js';
+import { buildLinearAutolinks, loadLinearIndex } from './linear.js';
+import { loadSlackCatalog } from './slack.js';
 
 type Snapshot = {
   maps?: MentionMaps;
@@ -65,12 +67,8 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
             : Promise.resolve<Partial<MentionMaps['slack']>>({}),
           needLinear && linearToken
             ? loadLinearIndex(linearToken)
-            : Promise.resolve<LinearBits>({
-                orgSlug: undefined,
-                teamKeys: [],
-                users: {},
-              }),
-        ]);
+            : Promise.resolve({ orgSlug: undefined, teamKeys: [], users: {} }),
+        ] as const);
 
         const slackRes = results[0];
         const linearRes = results[1];
@@ -193,214 +191,6 @@ export async function ensureDefaultsForTarget(
   return { maps: current?.maps, autolinks: current?.autolinks };
 }
 
-// ——— Slack ———
-
-async function loadSlackCatalog(
-  token: string
-): Promise<NonNullable<MentionMaps['slack']>> {
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
-  } as const;
-
-  const users = await paginateSlackUsers(headers);
-  const channels = await paginateSlackChannels(headers);
-
-  const usersMap: Record<string, { id: string; label?: string }> = {};
-  for (const u of users) {
-    const id = String(u.id ?? '');
-    if (!id) continue;
-    const username = normalizeHandle(String(u.name ?? ''));
-    const display = normalizeHandle(
-      String(
-        u.profile?.display_name_normalized ?? u.profile?.display_name ?? ''
-      )
-    );
-    if (username) {
-      usersMap[username] = {
-        id,
-        label: u.profile?.display_name ?? u.real_name,
-      };
-    }
-    if (display) {
-      usersMap[display] = { id, label: u.profile?.display_name ?? u.real_name };
-    }
-  }
-
-  const channelsMap: Record<string, { id: string; label?: string }> = {};
-  for (const c of channels) {
-    const id = String(c.id ?? '');
-    const name = normalizeChannel(String(c.name ?? ''));
-    if (id && name) {
-      channelsMap[name] = { id, label: name };
-    }
-  }
-
-  return { users: usersMap, channels: channelsMap };
-}
-
-async function paginateSlackUsers(
-  headers: Record<string, string>
-): Promise<SlackUser[]> {
-  const out: SlackUser[] = [];
-  let cursor: string | undefined;
-  do {
-    const u = new URL('https://slack.com/api/users.list');
-    if (cursor) u.searchParams.set('cursor', cursor);
-    const res = await fetch(u, { headers });
-    const json = (await res.json()) as SlackUsersListResponse;
-    if (!json.ok) {
-      throw new Error(
-        `Slack API error for ${u}: ${String((json as Record<string, unknown>)['error'] ?? 'unknown')}`
-      );
-    }
-    const items = Array.isArray(json.members) ? json.members : [];
-    out.push(...items);
-    const next = json.response_metadata?.next_cursor;
-    cursor = typeof next === 'string' && next.length > 0 ? next : undefined;
-  } while (cursor);
-  return out;
-}
-
-async function paginateSlackChannels(
-  headers: Record<string, string>
-): Promise<SlackChannel[]> {
-  const out: SlackChannel[] = [];
-  let cursor: string | undefined;
-  do {
-    const u = new URL(
-      'https://slack.com/api/conversations.list?types=public_channel,private_channel&exclude_archived=true'
-    );
-    if (cursor) u.searchParams.set('cursor', cursor);
-    const res = await fetch(u, { headers });
-    const json = (await res.json()) as SlackChannelsListResponse;
-    if (!json.ok) {
-      throw new Error(
-        `Slack API error for ${u}: ${String((json as Record<string, unknown>)['error'] ?? 'unknown')}`
-      );
-    }
-    const items = Array.isArray(json.channels) ? json.channels : [];
-    out.push(...items);
-    const next = json.response_metadata?.next_cursor;
-    cursor = typeof next === 'string' && next.length > 0 ? next : undefined;
-  } while (cursor);
-  return out;
-}
-
-function normalizeHandle(s: string): string {
-  return s.trim().toLowerCase();
-}
-function normalizeChannel(s: string): string {
-  return s.trim().toLowerCase();
-}
-
-// ——— Linear ———
-
-type LinearBits = {
-  orgSlug: string | undefined;
-  teamKeys: string[];
-  users: Record<string, { url: string; label?: string }>;
-};
-
-async function loadLinearIndex(token: string): Promise<LinearBits> {
-  const endpoint = 'https://api.linear.app/graphql';
-  const headers = {
-    Authorization: token,
-    'Content-Type': 'application/json',
-  } as const;
-
-  // Fetch organization urlKey and all team keys
-  const teamKeys: string[] = [];
-  let orgSlug: string | undefined;
-  let afterTeams: string | undefined;
-  do {
-    const query = `
-      query OrgTeams($after: String) {
-        organization { urlKey }
-        teams(first: 250, after: $after) {
-          pageInfo { hasNextPage endCursor }
-          nodes { id key name }
-        }
-      }
-    `;
-    const body = JSON.stringify({ query, variables: { after: afterTeams } });
-    const res = await fetch(endpoint, { method: 'POST', headers, body });
-    const json = (await res.json()) as LinearResponse<OrgTeamsData>;
-    if (json.errors && json.errors.length) {
-      throw new Error(
-        `Linear GraphQL error: ${json.errors[0]?.message ?? 'unknown'}`
-      );
-    }
-    const data = json.data;
-    orgSlug = String(data?.organization?.urlKey ?? orgSlug ?? '');
-    const nodes = data?.teams?.nodes ?? [];
-    for (const t of nodes) {
-      const key = String(t.key ?? '').trim();
-      if (key) teamKeys.push(key);
-    }
-    const pi = data?.teams?.pageInfo;
-    afterTeams = pi?.hasNextPage ? String(pi.endCursor ?? '') : undefined;
-  } while (afterTeams);
-
-  // Fetch all users; map by username/handle if available; fall back to email local-part.
-  const users: Record<string, { url: string; label?: string }> = {};
-  let afterUsers: string | undefined;
-  do {
-    const query = `
-      query Users($after: String) {
-        users(first: 250, after: $after) {
-          pageInfo { hasNextPage endCursor }
-          nodes { id name displayName email username }
-        }
-      }
-    `;
-    const body = JSON.stringify({ query, variables: { after: afterUsers } });
-    const res = await fetch(endpoint, { method: 'POST', headers, body });
-    const json = (await res.json()) as LinearResponse<UsersData>;
-    if (json.errors && json.errors.length) {
-      throw new Error(
-        `Linear GraphQL error: ${json.errors[0]?.message ?? 'unknown'}`
-      );
-    }
-    const nodes = json?.data?.users?.nodes ?? [];
-    for (const u of nodes) {
-      const username = normalizeHandle(String(u.username ?? ''));
-      const email = String(u.email ?? '');
-      const by =
-        username ||
-        (email.includes('@') ? email.split('@', 1)[0]?.toLowerCase() : '');
-      if (!by) continue;
-      const label = String(u.displayName ?? u.name ?? by);
-      const slug = orgSlug ?? '';
-      const url = slug
-        ? `https://linear.app/${slug}/profiles/${by}`
-        : `https://linear.app/profiles/${by}`;
-      users[by] = { url, label };
-    }
-    const pi = json?.data?.users?.pageInfo;
-    afterUsers = pi?.hasNextPage ? String(pi.endCursor ?? '') : undefined;
-  } while (afterUsers);
-
-  return { orgSlug, teamKeys, users };
-}
-
-function buildLinearAutolinks(
-  orgSlug: string | undefined,
-  keys: string[]
-): AutoLinkRule[] {
-  if (!keys.length) return [];
-  // Combine all team keys into a single regex for efficiency.
-  const escapeRe = (s: string) => s.replace(/[\\^$.*+?()\[\]{}|]/g, '\\$&');
-  const sorted = [...new Set(keys)].sort((a, b) => a.localeCompare(b));
-  const source = `\\b(${sorted.map(escapeRe).join('|')})-(\\d+)\\b`;
-  const pattern = new RegExp(source, 'g');
-  const slug = orgSlug ?? '';
-  const base = slug
-    ? `https://linear.app/${slug}/issue/$1-$2`
-    : `https://linear.app/issue/$1-$2`;
-  return [{ pattern, urlTemplate: base }];
-}
-
 function safeEnv(key: string): string | undefined {
   try {
     const g = globalThis as {
@@ -429,12 +219,8 @@ export async function forceLoadNowForTests(): Promise<void> {
       slackToken ? loadSlackCatalog(slackToken) : Promise.resolve({}),
       linearToken
         ? loadLinearIndex(linearToken)
-        : Promise.resolve<LinearBits>({
-            orgSlug: undefined,
-            teamKeys: [],
-            users: {},
-          }),
-    ]);
+        : Promise.resolve({ orgSlug: undefined, teamKeys: [], users: {} }),
+    ] as const);
     const nextMaps: MentionMaps = { ...(current?.maps ?? {}) };
     if (
       slackMaps.status === 'fulfilled' &&
@@ -464,54 +250,3 @@ export async function forceLoadNowForTests(): Promise<void> {
     console.warn('[format-for] test force-load failed:', err);
   }
 }
-
-// ——— Internal minimal types ———
-
-type SlackUser = {
-  id: string;
-  name?: string;
-  real_name?: string;
-  profile?: {
-    display_name?: string;
-    display_name_normalized?: string;
-  };
-};
-
-type SlackChannel = { id: string; name?: string };
-
-type SlackListResponse = {
-  ok: boolean;
-  [key: string]: unknown;
-  response_metadata?: { next_cursor?: string };
-};
-
-type SlackUsersListResponse = SlackListResponse & { members?: SlackUser[] };
-type SlackChannelsListResponse = SlackListResponse & {
-  channels?: SlackChannel[];
-};
-
-type OrgTeamsData = {
-  organization?: { urlKey?: string };
-  teams?: {
-    pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
-    nodes?: { id?: string; key?: string; name?: string }[];
-  };
-};
-
-type UsersData = {
-  users?: {
-    pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
-    nodes?: {
-      id?: string;
-      name?: string;
-      displayName?: string;
-      email?: string;
-      username?: string;
-    }[];
-  };
-};
-
-type LinearResponse<T> = {
-  data?: T;
-  errors?: { message?: string }[];
-};

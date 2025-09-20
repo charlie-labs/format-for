@@ -11,6 +11,7 @@ import { CONTINUE, visit } from 'unist-util-visit';
 import {
   type AutoLinkRule,
   type DetailsNode,
+  type FormatTarget,
   type MentionMaps,
   type MentionNode,
 } from '../types.js';
@@ -28,6 +29,7 @@ import {
  *    therefore not considered here).
  */
 export type CanonicalizeOptions = {
+  target?: FormatTarget;
   maps?: MentionMaps;
   autolinks?: AutoLinkRule[];
 };
@@ -35,6 +37,7 @@ export type CanonicalizeOptions = {
 export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   opts?: CanonicalizeOptions
 ) => {
+  const target = opts?.target;
   const maps = opts?.maps ?? {};
   const linearUsers = maps.linear?.users ?? {};
   const slackUsers = maps.slack?.users ?? {};
@@ -139,21 +142,24 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
               children: [{ type: 'text', value: label }],
             });
           } else if (m[8]) {
-            // @user → prefer Slack mention when a Slack map is provided, otherwise
-            // fall back to Linear user link mapping if present.
+            // @user → choose by target when known; Slack emits mentions, others link
             const key = m[8].toLowerCase();
-            const slackHit = slackUsers[key];
-            if (slackHit?.id) {
-              const mention: MentionNode = {
-                type: 'mention',
-                data: {
-                  subtype: 'user',
-                  id: slackHit.id,
-                  label: slackHit.label,
-                },
-                children: [],
-              };
-              fragments.push(mention);
+            if (target === 'slack') {
+              const slackHit = slackUsers[key];
+              if (slackHit?.id) {
+                const mention: MentionNode = {
+                  type: 'mention',
+                  data: {
+                    subtype: 'user',
+                    id: slackHit.id,
+                    label: slackHit.label,
+                  },
+                  children: [],
+                };
+                fragments.push(mention);
+              } else {
+                fragments.push({ type: 'text', value: whole });
+              }
             } else {
               const hit = linearUsers[key];
               if (hit?.url) {
