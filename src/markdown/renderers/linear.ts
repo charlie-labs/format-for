@@ -69,15 +69,9 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     for (const child of p.children) {
       if (skip) {
         if (child.type === 'html') {
-          const raw = String(child.value ?? '')
-            .trim()
-            .toLowerCase();
-          if (
-            (skip === 'script' && raw === '</script>') ||
-            (skip === 'style' && raw === '</style>')
-          ) {
-            skip = null;
-          }
+          const raw = String(child.value ?? '');
+          const close = new RegExp(`^\\s*</${skip}\\s*>\\s*$`, 'i');
+          if (close.test(raw)) skip = null;
         }
         continue;
       }
@@ -121,7 +115,14 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
         return [SKIP, index];
       }
       if (res.kind === 'text') {
-        parent.children.splice(index, 1, { type: 'text', value: res.value });
+        if (parent.type === 'paragraph') {
+          parent.children.splice(index, 1, { type: 'text', value: res.value });
+        } else {
+          parent.children.splice(index, 1, {
+            type: 'paragraph',
+            children: [{ type: 'text', value: res.value }],
+          });
+        }
         return [SKIP, index];
       }
       // For inline contexts (paragraph phrasing), replace sanitized HTML with a text node

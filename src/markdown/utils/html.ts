@@ -1,9 +1,11 @@
 import { type Element, type Root } from 'hast';
-import { type Schema } from 'hast-util-sanitize';
 import { toHtml } from 'hast-util-to-html';
 import { toText } from 'hast-util-to-text';
 import rehypeParse from 'rehype-parse';
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import rehypeSanitize, {
+  defaultSchema,
+  type Options as Schema,
+} from 'rehype-sanitize';
 import { unified } from 'unified';
 import { type Parent as UnistParent } from 'unist';
 import { SKIP, visit } from 'unist-util-visit';
@@ -11,6 +13,11 @@ import { SKIP, visit } from 'unist-util-visit';
 // Hoisted processors to avoid per-call allocation in hot paths
 const parseHtml = unified().use(rehypeParse, { fragment: true });
 const sanitizeDefault = unified().use(rehypeSanitize);
+
+// Cache rehype-sanitize transformers per normalized allowlist to avoid
+// per-call allocations in hot paths.
+type RootTransformer = (tree: Root) => Root;
+const linearSanitizerCache = new Map<string, RootTransformer>();
 
 /**
  * Convert an arbitrary HTML fragment into plain text suitable for Slack.
@@ -51,8 +58,17 @@ export function sanitizeForLinear(
   // - Drop <script>/<style> and their contents
   // - Sanitize with a strict allowlist (strip disallowed tags; no attributes)
   stripDangerous(raw);
-  const schema = linearSchema(allow ?? []);
-  const clean = unified().use(rehypeSanitize, schema).runSync(raw);
+  const normalized = (allow ?? [])
+    .map((t) => t.toLowerCase())
+    .sort()
+    .join(',');
+  let transform = linearSanitizerCache.get(normalized);
+  if (!transform) {
+    const schema = linearSchema(allow ?? []);
+    transform = rehypeSanitize(schema);
+    linearSanitizerCache.set(normalized, transform);
+  }
+  const clean = transform(raw);
 
   const asHtml = toHtml(clean, { allowParseErrors: true });
   const trimmed = asHtml.trim();

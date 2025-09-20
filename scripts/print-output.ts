@@ -2,7 +2,12 @@
 import { formatFor } from '../src/index.js';
 
 const inputPath = Bun.argv[2];
-const target = (Bun.argv[3] ?? 'linear') as 'linear' | 'slack' | 'github';
+type Target = 'linear' | 'slack' | 'github';
+function isTarget(x: unknown): x is Target {
+  return x === 'linear' || x === 'slack' || x === 'github';
+}
+const rawTarget = Bun.argv[3] ?? 'linear';
+const target: Target = isTarget(rawTarget) ? rawTarget : 'linear';
 if (!inputPath) {
   console.error(
     'usage: bun scripts/print-output.ts <path-to-md> [linear|slack|github]'
