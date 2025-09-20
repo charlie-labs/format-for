@@ -4,7 +4,7 @@ import remarkStringify, {
   type Options as RemarkStringifyOptions,
 } from 'remark-stringify';
 import { unified } from 'unified';
-import { visit } from 'unist-util-visit';
+import { SKIP, visit } from 'unist-util-visit';
 
 import { type DetailsNode, type MentionNode } from '../types.js';
 
@@ -65,33 +65,23 @@ export function renderGithub(ast: Root): string {
 }
 
 function convertNestedDetails(children: Root['children']): void {
-  for (let i = 0; i < children.length; i++) {
-    const n = children[i];
-    if (!n) continue;
-    if (n.type === 'details') {
-      // Recursively convert inside first
-      convertNestedDetails(n.children);
-      const summary =
-        (typeof n.data?.summary === 'string' ? n.data.summary : undefined) ??
-        'Details';
-      const inner = trimTrailingNewlines(toMarkdownChildren(n.children));
-      const value = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
-      const htmlNode: Html = { type: 'html', value };
-      children.splice(i, 1, htmlNode);
-      continue;
-    }
-    if (hasChildren(n)) {
-      convertNestedDetails(n.children);
-    }
-  }
-}
-
-function hasChildren(n: unknown): n is { children: unknown[] } {
-  return (
-    !!n &&
-    typeof n === 'object' &&
-    Array.isArray((n as { children?: unknown }).children)
-  );
+  // Visit a synthetic root that wraps the provided children and transform
+  // any nested `details` nodes in-place without manual casts.
+  const root: Root = { type: 'root', children };
+  visit(root, 'details', (n: DetailsNode, index, parent) => {
+    if (typeof index !== 'number' || !parent) return;
+    // Ensure inner details are converted first so stringify doesn't see
+    // unknown `details` nodes in the body.
+    convertNestedDetails(n.children);
+    const summary =
+      (typeof n.data?.summary === 'string' ? n.data.summary : undefined) ??
+      'Details';
+    const inner = trimTrailingNewlines(toMarkdownChildren(n.children));
+    const value = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
+    const htmlNode: Html = { type: 'html', value };
+    parent.children.splice(index, 1, htmlNode);
+    return SKIP; // we've handled this subtree; avoid re-traversal
+  });
 }
 
 function toMarkdownChildren(children: Root['children']): string {
