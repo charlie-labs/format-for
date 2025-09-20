@@ -10,3 +10,5 @@ And here is a real collapsible:
 +++ Outside Details
 
 This is the collapsible body.
+
++++

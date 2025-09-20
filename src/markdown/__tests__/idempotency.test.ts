@@ -31,7 +31,15 @@ describe('round-trip idempotency (supported constructs only)', () => {
   });
 
   test('linear', async () => {
-    const input = ['Paragraph', '', '+++ Details', '', 'Hidden'].join('\n');
+    const input = [
+      'Paragraph',
+      '',
+      '+++ Details',
+      '',
+      'Hidden',
+      '',
+      '+++',
+    ].join('\n');
     const once = await formatFor(input, 'linear');
     const twice = await formatFor(once, 'linear');
     expect(twice).toBe(once);

@@ -21,7 +21,11 @@ import {
  *  - Slack angle forms & autolinks -> link/mention nodes
  *  - Linear @user -> link if mapped
  *  - Autolinks (e.g., BOT-123) via rules
- *  - Linear collapsible: paragraph starting with '+++ ' -> details node with next block as body
+ *  - Linear collapsible: paragraph starting with '+++ ' opens a block that must be
+ *    closed by a standalone '+++' line. Collect all blocks until the matching
+ *    closing fence, supporting nesting and ignoring any '+++' sequences that
+ *    appear inside fenced code blocks (those are parsed as `code` nodes and
+ *    therefore not considered here).
  */
 export type CanonicalizeOptions = {
   maps?: MentionMaps;
@@ -62,43 +66,8 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
       node.children = [{ type: 'text', value: label }];
     });
 
-    // 1) Block-level: '+++ Title' → details
-    for (let i = 0; i < root.children.length; i++) {
-      const node = root.children[i];
-      if (!node) continue;
-      if (node.type !== 'paragraph') continue;
-      const p = node;
-      if (p.children.length !== 1 || p.children[0]?.type !== 'text') continue;
-      const first = p.children[0];
-      const text = String(
-        (first && first.type === 'text' ? first.value : '') ?? ''
-      );
-      const m = /^\+\+\+\s+(.+)/.exec(text);
-      if (!m) continue;
-      const title = (m[1] || '').trim();
-      const body: Root['children'] = [];
-      const next = root.children[i + 1];
-      if (
-        next &&
-        !(
-          next.type === 'paragraph' &&
-          next.children?.[0]?.type === 'text' &&
-          String(
-            (next.children[0].type === 'text' ? next.children[0].value : '') ??
-              ''
-          ).startsWith('+++ ')
-        )
-      ) {
-        body.push(next);
-        root.children.splice(i + 1, 1);
-      }
-      const details: DetailsNode = {
-        type: 'details',
-        data: { summary: title },
-        children: body,
-      };
-      root.children.splice(i, 1, details);
-    }
+    // 1) Block-level: '+++ Title' ... '+++' → details (with nesting)
+    canonicalizeDetailsInParent(root);
 
     // 2) Inline text normalization
     visit(
@@ -214,7 +183,9 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         let parts: PhrasingContent[] = [{ type: 'text', value: input }];
         for (const rule of autolinks) {
           // Clone once per rule and reset between segments to avoid `lastIndex` bleed
-          const re = new RegExp(rule.pattern.source, rule.pattern.flags);
+          const baseFlags = rule.pattern.flags;
+          const flags = baseFlags.includes('g') ? baseFlags : baseFlags + 'g';
+          const re = new RegExp(rule.pattern.source, flags);
           const next: PhrasingContent[] = [];
           for (const seg of parts) {
             if (seg.type !== 'text') {
@@ -257,6 +228,58 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
     }
   };
 };
+
+function canonicalizeDetailsInParent(parent: Parent): void {
+  for (let i = 0; i < parent.children.length; i++) {
+    const node = parent.children[i];
+    if (!node || node.type !== 'paragraph') continue;
+    const p = node;
+    if (p.children.length !== 1 || p.children[0]?.type !== 'text') continue;
+    const first = p.children[0];
+    const text = String(first.value ?? '');
+    const open = /^\+\+\+\s+(.+)/.exec(text);
+    if (!open) continue;
+
+    const title = (open[1] || '').trim();
+    let j = i + 1;
+    let depth = 1; // already saw one opener
+    // Scan forward to find the matching closing fence, tracking nesting
+    for (; j < parent.children.length; j++) {
+      const n = parent.children[j];
+      if (!n || n.type !== 'paragraph') continue;
+      const only = n.children.length === 1 ? n.children[0] : null;
+      const t = only?.type === 'text' ? String(only.value ?? '') : '';
+      if (!t) continue;
+      if (/^\+\+\+\s*$/.test(t)) {
+        depth--;
+        if (depth === 0) break; // found matching close for our opener
+        continue;
+      }
+      const innerOpen = /^\+\+\+\s+(.+)/.exec(t);
+      if (innerOpen) {
+        depth++;
+      }
+    }
+
+    // If no matching closing fence found, leave as plain text
+    if (j >= parent.children.length) continue;
+
+    // Collect body nodes between i+1 and j-1 (inclusive)
+    const body = parent.children.slice(i + 1, j);
+    // Remove opener..closer range and replace with details node
+    const details: DetailsNode = {
+      type: 'details',
+      data: { summary: title },
+      children: body,
+    };
+    parent.children.splice(i, j - i + 1, details);
+
+    // Recursively canonicalize nested openers inside the new details body
+    canonicalizeDetailsInParent(details);
+
+    // Continue after the inserted node
+  }
+}
 
 function isCodeLike(_node: Parent): boolean {
   // Text nodes never appear under `code`/`inlineCode` (they are Literals),

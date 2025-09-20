@@ -1,8 +1,10 @@
-import { type Parent, type Root } from 'mdast';
+import { type Html, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
-import remarkStringify from 'remark-stringify';
+import remarkStringify, {
+  type Options as RemarkStringifyOptions,
+} from 'remark-stringify';
 import { unified } from 'unified';
-import { visit } from 'unist-util-visit';
+import { SKIP, visit } from 'unist-util-visit';
 
 import { type DetailsNode, type MentionNode } from '../types.js';
 
@@ -44,23 +46,47 @@ export function renderGithub(ast: Root): string {
       parent: Parent | undefined
     ) => {
       const summary = node.data?.summary ?? 'Details';
-      const inner = toMarkdownChildren(node.children);
+      // Convert any nested details inside the body to HTML first, then stringify
+      // the body so remark doesn't encounter unknown `details` nodes.
+      convertNestedDetails(node.children);
+      const inner = trimTrailingNewlines(toMarkdownChildren(node.children));
       const html = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
       if (typeof index === 'number' && parent) {
-        parent.children.splice(index, 1, { type: 'html', value: html });
+        const htmlNode: Html = { type: 'html', value: html };
+        parent.children.splice(index, 1, htmlNode);
       }
     }
   );
 
   return unified()
-    .use(remarkStringify, { bullet: '-', fences: true })
+    .use(remarkStringify, stringifyOptions)
     .use(remarkGfm)
     .stringify(cloned);
 }
 
+function convertNestedDetails(children: Root['children']): void {
+  // Visit a synthetic root that wraps the provided children and transform
+  // any nested `details` nodes in-place without manual casts.
+  const root: Root = { type: 'root', children };
+  visit(root, 'details', (n: DetailsNode, index, parent) => {
+    if (typeof index !== 'number' || !parent) return;
+    // Ensure inner details are converted first so stringify doesn't see
+    // unknown `details` nodes in the body.
+    convertNestedDetails(n.children);
+    const summary =
+      (typeof n.data?.summary === 'string' ? n.data.summary : undefined) ??
+      'Details';
+    const inner = trimTrailingNewlines(toMarkdownChildren(n.children));
+    const value = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
+    const htmlNode: Html = { type: 'html', value };
+    parent.children.splice(index, 1, htmlNode);
+    return SKIP; // we've handled this subtree; avoid re-traversal
+  });
+}
+
 function toMarkdownChildren(children: Root['children']): string {
   return unified()
-    .use(remarkStringify)
+    .use(remarkStringify, stringifyOptions)
     .use(remarkGfm)
     .stringify({ type: 'root', children } satisfies Root);
 }
@@ -68,3 +94,12 @@ function toMarkdownChildren(children: Root['children']): string {
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+function trimTrailingNewlines(s: string): string {
+  return s.replace(/\n+$/, '');
+}
+
+const stringifyOptions = {
+  bullet: '-',
+  fences: true,
+} satisfies RemarkStringifyOptions;

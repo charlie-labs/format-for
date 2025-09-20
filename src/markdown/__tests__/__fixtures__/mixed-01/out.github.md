@@ -6,7 +6,6 @@ A paragraph with ~~strike~~ and a [link](https://example.com) and @U123 and #gen
 <summary>More Info</summary>
 
 Hidden details paragraph.
-
 </details>
 
 | H | V |
