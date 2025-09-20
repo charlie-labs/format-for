@@ -98,13 +98,9 @@ function renderInline(children: PhrasingContent[]): string {
       continue;
     }
     if (c.type === 'text') {
-      // Remove dangerous inline fragments like <script>...</script> and <style>...</style> that
-      // can appear in raw text, then escape the remainder for Slack.
-      const raw = String(c.value ?? '');
-      const withoutDanger = raw
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[\s\S]*?<\/style>/gi, '');
-      s += escapeSlackText(withoutDanger);
+      // Plain text is escaped for Slack formatting. Script/style content is
+      // handled via the `html` node skip logic above; don't strip here.
+      s += escapeSlackText(c.value ?? '');
       continue;
     }
     if (c.type === 'emphasis') {
