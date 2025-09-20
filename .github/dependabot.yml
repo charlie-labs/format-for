@@ -1,0 +1,30 @@
+# Dependabot configuration for this repository
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates
+version: 2
+updates:
+  # Keep GitHub Actions up to date
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+      timezone: 'America/Los_Angeles'
+    open-pull-requests-limit: 10
+    commit-message:
+      # Prefix helps keep history scannable
+      prefix: 'ci'
+      include: 'scope'
+    labels:
+      - 'dependencies'
+      - 'github-actions'
+    # Reviewers are optional; adjust to team norms if noisy
+    reviewers:
+      - 'rileytomasek'
+    # Rely on the repository's default branch (avoid hard-coding "master"/"main")
+
+  # NOTE: We intentionally do not enable the npm ecosystem here because this repo
+  # uses Bun with a Bun lockfile (bun.lock). As of today, Dependabot does not
+  # update Bun lockfiles, and our CI uses `bun install --frozen-lockfile`, which
+  # would cause npm PRs to fail. If/when Dependabot adds Bun lockfile support,
+  # we can add an "npm" entry below or switch to Renovate for runtime deps.
