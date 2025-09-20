@@ -52,7 +52,7 @@ function collect(node: any, type: string, out: any[] = []): any[] {
 
 describe('build-ast: target-aware maps + autolinks merge', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    vi.resetModules();
     snapshot = {};
   });
 
@@ -82,6 +82,7 @@ describe('build-ast: target-aware maps + autolinks merge', () => {
     expect(mentions.length).toBe(1);
     expect(mentions[0]?.data?.subtype).toBe('user');
     expect(mentions[0]?.data?.id).toBe('U_CALL'); // caller overrides defaults
+    expect(collect(slackAst, 'link').length).toBe(0);
 
     // GitHub: @riley -> link using Linear map (never Slack mention)
     const ghAst = await buildAstForGithub('Hello @riley');
@@ -96,6 +97,7 @@ describe('build-ast: target-aware maps + autolinks merge', () => {
     expect(linLinks[0]?.url).toContain(
       'https://linear.app/acme/profiles/riley'
     );
+    expect(collect(linAst, 'mention').length).toBe(0);
   });
 
   test('deep-merges autolinks by family (append instead of overwrite)', async () => {
