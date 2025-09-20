@@ -1,0 +1,3 @@
+Slack: flattened list depth > 2
+Slack: table downgraded to code block
+Slack: HTML stripped

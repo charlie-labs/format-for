@@ -1,6 +1,8 @@
 import { type Html, type Paragraph, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
-import remarkStringify from 'remark-stringify';
+import remarkStringify, {
+  type Options as StringifyOptions,
+} from 'remark-stringify';
 import { unified } from 'unified';
 import { SKIP, visit } from 'unist-util-visit';
 
@@ -136,8 +138,19 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     }
   );
 
+  const stringifyOpts: StringifyOptions = {
+    bullet: '-',
+    fences: true,
+    // Use Markdown hard break with two spaces (not backslash) for cleaner raw output.
+    handlers: {
+      break() {
+        return '  \n';
+      },
+    },
+  };
+
   return unified()
-    .use(remarkStringify, { bullet: '-', fences: true })
+    .use(remarkStringify, stringifyOpts)
     .use(remarkGfm)
     .stringify(cloned);
 }

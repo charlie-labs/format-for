@@ -5,9 +5,7 @@ import { formatFor } from '../../index.js';
 describe('Linear HTML allowlist (sanitize/unwrap)', () => {
   test('keeps paragraph with only allowed tags', async () => {
     const input = '<u>keep</u><br />and more';
-    const out = await formatFor(input, 'linear', {
-      linearHtmlAllow: ['u', 'br'],
-    });
+    const out = await formatFor.linear(input);
     expect(out).toContain('\\<u>\\</u>keep');
     expect(out).toMatch(/\\<br\b/);
     expect(out).toContain('and more');
@@ -15,7 +13,7 @@ describe('Linear HTML allowlist (sanitize/unwrap)', () => {
 
   test('keeps HTML with no actual tags (comments/whitespace)', async () => {
     const input = '<!-- a comment -->';
-    const out = await formatFor(input, 'linear');
+    const out = await formatFor.linear(input);
     expect(out).toContain('<!-- a comment -->');
   });
 
@@ -27,7 +25,7 @@ describe('Linear HTML allowlist (sanitize/unwrap)', () => {
       '',
       'after',
     ].join('\n');
-    const out = await formatFor(input, 'linear', { linearHtmlAllow: ['u'] });
+    const out = await formatFor.linear(input);
     // Middle paragraph is kept; script removed; allowed tag preserved
     expect(out).not.toMatch(/<script>|nope\(\)/);
     expect(out).toContain('\\<u>\\</u>ok');

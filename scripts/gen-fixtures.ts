@@ -13,7 +13,7 @@ async function main() {
   for (const fx of fixtures) {
     const inputPath = join(fx.path, 'input.md');
     const input = readFileSync(inputPath, 'utf8');
-    const gh = await formatFor(input, 'github');
+    const gh = await formatFor.github(input);
     // Capture only Slack warnings to warnings.txt
     const warnings: string[] = [];
     const origWarn = console.warn;
@@ -22,11 +22,11 @@ async function main() {
     };
     let sl = '';
     try {
-      sl = await formatFor(input, 'slack');
+      sl = await formatFor.slack(input);
     } finally {
       console.warn = origWarn;
     }
-    const ln = await formatFor(input, 'linear');
+    const ln = await formatFor.linear(input);
     writeFileSync(join(fx.path, 'out.github.md'), gh);
     writeFileSync(join(fx.path, 'out.slack.txt'), sl);
     writeFileSync(join(fx.path, 'out.linear.md'), ln);

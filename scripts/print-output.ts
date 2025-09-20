@@ -8,7 +8,7 @@ function isTarget(x: unknown): x is Target {
 }
 const rawTarget = Bun.argv[3] ?? 'linear';
 const target: Target = isTarget(rawTarget) ? rawTarget : 'linear';
-if (!inputPath) {
+if (typeof inputPath !== 'string') {
   console.error(
     'usage: bun scripts/print-output.ts <path-to-md> [linear|slack|github]'
   );
@@ -16,5 +16,5 @@ if (!inputPath) {
 }
 
 const text = await Bun.file(inputPath).text();
-const out = await formatFor(text, target);
+const out = await formatFor[target](text);
 console.log(out);

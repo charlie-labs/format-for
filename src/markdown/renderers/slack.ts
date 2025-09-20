@@ -90,11 +90,15 @@ function renderInline(children: PhrasingContent[]): string {
     if (skip) {
       if (c.type === 'html') {
         const raw = String(c.value ?? '');
-        const close = new RegExp(`^</${skip}\\s*>$`, 'i');
+        const close = new RegExp(`^\s*</${skip}\s*>\s*$`, 'i');
         if (close.test(raw)) {
           skip = null;
         }
       }
+      continue;
+    }
+    if (c.type === 'break') {
+      s += '\n';
       continue;
     }
     if (c.type === 'text') {
