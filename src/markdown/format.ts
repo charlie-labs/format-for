@@ -1,4 +1,7 @@
-import { ensureRuntimeDefaults } from '../runtime/defaults.js';
+import {
+  ensureDefaultsForTarget,
+  ensureRuntimeDefaults,
+} from '../runtime/defaults.js';
 import { parseToCanonicalMdast } from './parse.js';
 import { renderGithub } from './renderers/github.js';
 import { renderLinear } from './renderers/linear.js';
@@ -12,13 +15,17 @@ import {
 
 type CanonicalMdast = ReturnType<typeof parseToCanonicalMdast>;
 
-function buildAst(
+async function buildAst(
   input: string,
   target: FormatTarget,
   options: FormatOptions | undefined
-): CanonicalMdast {
+): Promise<CanonicalMdast> {
   // Merge runtime defaults (from env) with per-call options. Keep this logic
   // here so the canonicalizer remains synchronous and simple.
+  // Block on the initial load for this target (only once per process) so the
+  // very first call benefits from maps & autolinks. Subsequent refreshes are
+  // background-only, handled by ensureRuntimeDefaults().
+  await ensureDefaultsForTarget(target);
   const defaults = getDefaultsForTarget(target);
   const mergedMaps = {
     ...(defaults.maps ?? {}),
@@ -47,29 +54,25 @@ function buildAst(
 
 // Always read the most recent in-memory snapshot produced by
 // ensureRuntimeDefaults(). This remains synchronous and avoids staleness.
-function getDefaultsForTarget(_target: FormatTarget): {
+function getDefaultsForTarget(target: FormatTarget): {
   maps?: FormatOptions['maps'];
   autolinks?: FormatOptions['autolinks'];
 } {
-  return ensureRuntimeDefaults();
+  // Hint the target so the background refresher only fetches relevant sources
+  return ensureRuntimeDefaults(target);
 }
 
 export const formatFor: FormatFor = {
   async github(input: string, options: FormatOptions = {}): Promise<string> {
-    // Kick off background load on first call. Non-blocking for simplicity; the
-    // loader is fast and cached. The synchronous snapshot is read in buildAst.
-    void ensureRuntimeDefaults();
-    const ast = buildAst(input, 'github', options);
+    const ast = await buildAst(input, 'github', options);
     return renderGithub(ast);
   },
   async slack(input: string, options: FormatOptions = {}): Promise<string> {
-    void ensureRuntimeDefaults();
-    const ast = buildAst(input, 'slack', options);
+    const ast = await buildAst(input, 'slack', options);
     return renderSlack(ast);
   },
   async linear(input: string, options: FormatOptions = {}): Promise<string> {
-    void ensureRuntimeDefaults();
-    const ast = buildAst(input, 'linear', options);
+    const ast = await buildAst(input, 'linear', options);
     return renderLinear(ast, {
       // Use a cloned copy to guarantee immutability across calls even if a future
       // refactor accidentally mutates the array downstream.

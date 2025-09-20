@@ -11,7 +11,6 @@ import {
 
 describe('runtime: env-backed defaults loader', () => {
   const origEnv = { ...process.env };
-  const origFetch = globalThis.fetch;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -114,24 +113,28 @@ describe('runtime: env-backed defaults loader', () => {
       }
       return new Response('not found', { status: 404 });
     });
-    globalThis.fetch = fetchStub as any;
 
-    // Force-load now so we have deterministic behavior.
-    await forceLoadNowForTests();
+    const prev = globalThis.fetch;
+    try {
+      globalThis.fetch = fetchStub as any;
+      // Force-load now so we have deterministic behavior.
+      await forceLoadNowForTests();
 
-    // Slack target: @riley -> <@URILEY>; channels preserved via #name but not used here
-    const slack = await formatFor.slack('Hello @riley');
-    expect(slack).toContain('<@URILEY>');
+      // Slack target: @riley -> <@URILEY>; channels preserved via #name but not used here
+      const slack = await formatFor.slack('Hello @riley');
+      expect(slack).toContain('<@URILEY>');
 
-    // Linear target: @riley -> [Riley](https://linear.app/acme/profiles/riley)
-    const linear = await formatFor.linear('Hello @riley');
-    expect(linear).toContain('[Riley](https://linear.app/acme/profiles/riley)');
+      // Linear target: @riley -> [Riley](https://linear.app/acme/profiles/riley)
+      const linear = await formatFor.linear('Hello @riley');
+      expect(linear).toContain(
+        '[Riley](https://linear.app/acme/profiles/riley)'
+      );
 
-    // GitHub target: BOT-123 autolink using combined team keys and org slug
-    const gh = await formatFor.github('See BOT-123');
-    expect(gh).toContain('[BOT-123](https://linear.app/acme/issue/BOT-123)');
-
-    // Restore fetch
-    globalThis.fetch = origFetch;
+      // GitHub target: BOT-123 autolink using combined team keys and org slug
+      const gh = await formatFor.github('See BOT-123');
+      expect(gh).toContain('[BOT-123](https://linear.app/acme/issue/BOT-123)');
+    } finally {
+      globalThis.fetch = prev;
+    }
   });
 });

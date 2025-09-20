@@ -141,7 +141,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           } else if (m[8]) {
             // @user → prefer Slack mention when a Slack map is provided, otherwise
             // fall back to Linear user link mapping if present.
-            const key = m[8];
+            const key = m[8].toLowerCase();
             const slackHit = slackUsers[key];
             if (slackHit?.id) {
               const mention: MentionNode = {
