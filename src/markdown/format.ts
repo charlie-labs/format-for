@@ -30,13 +30,6 @@ export const formatFor: FormatFor = {
     return renderSlack(ast);
   },
   async linear(input: string, options: FormatOptions = {}): Promise<string> {
-    // Back-compat: if older callers pass a removed option, emit a warning and ignore it.
-    if (options && 'linearHtmlAllow' in (options as Record<string, unknown>)) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        'formatFor.linear: options.linearHtmlAllow has been removed and will be ignored; Linear HTML allowlist is fixed.'
-      );
-    }
     const ast = buildAst(input, options);
     return renderLinear(ast, {
       // Use a cloned copy to guarantee immutability across calls even if a future
