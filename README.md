@@ -27,7 +27,7 @@ This repository is currently private and not published to npm. Use it from a wor
  bun add github:charlie-labs/format-for
 ```
 
-Runtime: Bun 1.x or Node 18+. Module format: ESM.
+Runtime: Bun 1.x (tested). Node 18+ may work but is not officially covered in CI. Module format: ESM.
 
 ---
 
@@ -134,7 +134,7 @@ Short summary: We are migrating the auth callback. FYI <!here> see <https://char
 - Headings are printed as bold lines
 - The nested `+++` section is rendered as a bold summary followed by an indented quote block
 - The table renders as a fenced code block
-- Warnings printed for this input: `Slack: flattened list depth > 2`, `Slack: table downgraded to code block`, `Slack: HTML stripped`
+- Warnings printed for this excerpt: `Slack: table downgraded to code block`
 
 </details>
 
