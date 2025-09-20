@@ -32,13 +32,25 @@ export interface MentionMaps {
   };
 }
 
+// Central source of truth for Linear's supported inline HTML tags.
+// Keep this list in lockstep with what Linear renders today.
+export const DEFAULT_LINEAR_HTML_ALLOW = [
+  'details',
+  'summary',
+  'u',
+  'sub',
+  'sup',
+  'br',
+] as const;
+
+export type LinearAllowedHtmlTag = (typeof DEFAULT_LINEAR_HTML_ALLOW)[number];
+
 /** Options for formatting. All synchronous. */
 export interface FormatOptions {
   maps?: MentionMaps;
   /** Autolink rules for Linear (and optionally others in future). */
   autolinks?: { linear?: AutoLinkRule[] };
-  /** Allowed HTML tags for Linear; others are stripped. Defaults to ['details','summary','u','sub','sup','br'] */
-  linearHtmlAllow?: ('details' | 'summary' | 'u' | 'sub' | 'sup' | 'br')[];
+  // Note: Linear's HTML allowlist is intentionally NOT configurable by callers.
 }
 
 /** Function signature for a target-specific formatter. */

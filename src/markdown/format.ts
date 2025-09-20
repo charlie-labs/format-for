@@ -2,18 +2,11 @@ import { parseToCanonicalMdast } from './parse.js';
 import { renderGithub } from './renderers/github.js';
 import { renderLinear } from './renderers/linear.js';
 import { renderSlack } from './renderers/slack.js';
-import { type FormatFor, type FormatOptions } from './types.js';
-
-// Default Linear HTML allowlist used when `options.linearHtmlAllow` is not provided.
-// Cloned at call sites to avoid accidental mutation.
-const DEFAULT_LINEAR_HTML_ALLOW = [
-  'details',
-  'summary',
-  'u',
-  'sub',
-  'sup',
-  'br',
-] as const;
+import {
+  DEFAULT_LINEAR_HTML_ALLOW,
+  type FormatFor,
+  type FormatOptions,
+} from './types.js';
 
 type CanonicalMdast = ReturnType<typeof parseToCanonicalMdast>;
 
@@ -37,9 +30,18 @@ export const formatFor: FormatFor = {
     return renderSlack(ast);
   },
   async linear(input: string, options: FormatOptions = {}): Promise<string> {
+    // Back-compat: if older callers pass a removed option, emit a warning and ignore it.
+    if (options && 'linearHtmlAllow' in (options as Record<string, unknown>)) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        'formatFor.linear: options.linearHtmlAllow has been removed and will be ignored; Linear HTML allowlist is fixed.'
+      );
+    }
     const ast = buildAst(input, options);
     return renderLinear(ast, {
-      allowHtml: [...(options.linearHtmlAllow ?? DEFAULT_LINEAR_HTML_ALLOW)],
+      // Use a cloned copy to guarantee immutability across calls even if a future
+      // refactor accidentally mutates the array downstream.
+      allowHtml: [...DEFAULT_LINEAR_HTML_ALLOW],
     });
   },
 };

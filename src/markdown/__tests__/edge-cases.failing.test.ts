@@ -17,7 +17,7 @@ describe('edge cases (documented failures)', () => {
 
   test('Linear HTML allowlist: mixed allowed + disallowed tags should be stripped', async () => {
     const input = '<u>ok</u><blink>nope</blink>';
-    const out = await formatFor.linear(input, { linearHtmlAllow: ['u'] });
+    const out = await formatFor.linear(input);
     // If any disallowed tag appears in the same HTML node, the whole paragraph should be removed.
     expect(out).not.toMatch(/<blink>|nope/);
     expect(out).not.toContain('ok');

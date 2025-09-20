@@ -5,9 +5,7 @@ import { formatFor } from '../../index.js';
 describe('Linear HTML allowlist (strict)', () => {
   test('keeps paragraph with only allowed tags', async () => {
     const input = '<u>keep</u><br />and more';
-    const out = await formatFor.linear(input, {
-      linearHtmlAllow: ['u', 'br'],
-    });
+    const out = await formatFor.linear(input);
     expect(out).toContain('<u>keep</u>');
     expect(out).toMatch(/<br\b/);
     expect(out).toContain('and more');
@@ -27,7 +25,7 @@ describe('Linear HTML allowlist (strict)', () => {
       '',
       'after',
     ].join('\n');
-    const out = await formatFor.linear(input, { linearHtmlAllow: ['u'] });
+    const out = await formatFor.linear(input);
     // Middle paragraph removed entirely
     expect(out).not.toMatch(/<script>|nope\(\)/);
     expect(out).not.toContain('ok');
