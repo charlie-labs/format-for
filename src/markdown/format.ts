@@ -4,7 +4,6 @@ import { renderGithub } from './renderers/github.js';
 import { renderLinear } from './renderers/linear.js';
 import { renderSlack } from './renderers/slack.js';
 import {
-  type AutoLinkRule,
   DEFAULT_LINEAR_HTML_ALLOW,
   type FormatFor,
   type FormatOptions,
@@ -36,10 +35,8 @@ function buildAst(
   }
 
   const mergedAutolinks: NonNullable<FormatOptions['autolinks']> = {
-    linear: [
-      ...(defaults.autolinks?.linear ?? []),
-      ...(options?.autolinks?.linear ?? []),
-    ],
+    ...(defaults.autolinks ?? {}),
+    ...(options?.autolinks ?? {}),
   };
 
   return parseToCanonicalMdast(input, {
@@ -48,27 +45,13 @@ function buildAst(
   });
 }
 
-// Runtime defaults are loaded lazily at module import. We keep a tiny wrapper so
-// tests can stub/replace this during verification.
-let runtimeDefaultsCache:
-  | ({
-      maps?: FormatOptions['maps'];
-      autolinks?: FormatOptions['autolinks'];
-    } & {
-      loaded: boolean;
-    })
-  | undefined;
-
+// Always read the most recent in-memory snapshot produced by
+// ensureRuntimeDefaults(). This remains synchronous and avoids staleness.
 function getDefaultsForTarget(_target: FormatTarget): {
   maps?: FormatOptions['maps'];
   autolinks?: FormatOptions['autolinks'];
 } {
-  if (!runtimeDefaultsCache?.loaded) {
-    // Synchronously read the most recently loaded defaults snapshot produced by
-    // ensureRuntimeDefaults(). This avoids making buildAst async.
-    runtimeDefaultsCache = { ...ensureRuntimeDefaults(), loaded: true };
-  }
-  return runtimeDefaultsCache ?? {};
+  return ensureRuntimeDefaults();
 }
 
 export const formatFor: FormatFor = {

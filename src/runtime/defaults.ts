@@ -146,7 +146,7 @@ async function paginateSlackUsers(
     const json = (await res.json()) as SlackUsersListResponse;
     if (!json.ok) {
       throw new Error(
-        `Slack API error for ${u}: ${String((json as Record<string, unknown>).error ?? 'unknown')}`
+        `Slack API error for ${u}: ${String((json as Record<string, unknown>)['error'] ?? 'unknown')}`
       );
     }
     const items = Array.isArray(json.members) ? json.members : [];
@@ -171,7 +171,7 @@ async function paginateSlackChannels(
     const json = (await res.json()) as SlackChannelsListResponse;
     if (!json.ok) {
       throw new Error(
-        `Slack API error for ${u}: ${String((json as Record<string, unknown>).error ?? 'unknown')}`
+        `Slack API error for ${u}: ${String((json as Record<string, unknown>)['error'] ?? 'unknown')}`
       );
     }
     const items = Array.isArray(json.channels) ? json.channels : [];
@@ -285,8 +285,9 @@ function buildLinearAutolinks(
 ): AutoLinkRule[] {
   if (!keys.length) return [];
   // Combine all team keys into a single regex for efficiency.
+  const escapeRe = (s: string) => s.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
   const sorted = [...new Set(keys)].sort((a, b) => a.localeCompare(b));
-  const source = `\\b(${sorted.join('|')})-(\\d+)\\b`;
+  const source = `\\b(${sorted.map(escapeRe).join('|')})-(\\d+)\\b`;
   const pattern = new RegExp(source, 'g');
   const slug = orgSlug ?? '';
   const base = slug
