@@ -1,0 +1,11 @@
+Hello\nworld
+
+Inline code stays: `x\ny`
+
+Fenced code stays:
+```
+{"note":"Line\nTwo"}
+```
+
+Slack-style link label newlines collapse to space:
+<https://ex.com|Line\nTwo>

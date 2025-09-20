@@ -4,6 +4,7 @@ import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 
 import { remarkCanonicalizeMixed } from './plugins/canonicalize.js';
+import { remarkFixLiteralNewlines } from './plugins/fixLiteralNewlines.js';
 import {
   assertIsRoot,
   type AutoLinkRule,
@@ -31,7 +32,9 @@ export function parseToCanonicalMdast(
       target: opts.target,
       maps: opts.maps ?? {},
       autolinks: opts.autolinks?.linear ?? [],
-    });
+    })
+    // Replace literal "\n" with `break` nodes (hard line breaks), skipping code.
+    .use(remarkFixLiteralNewlines);
 
   const ast = processor.parse(String(input));
   // Apply transforms synchronously to produce the canonical tree

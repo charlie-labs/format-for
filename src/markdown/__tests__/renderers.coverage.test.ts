@@ -178,6 +178,27 @@ describe('renderers: branch coverage', () => {
     expect(out).toContain('#channel');
   });
 
+  test('github: details inner text uses two-space hard breaks', () => {
+    const ast = root([
+      {
+        type: 'details',
+        data: { summary: 'S' },
+        children: [
+          {
+            type: 'paragraph',
+            children: [
+              { type: 'text', value: 'Hello' },
+              { type: 'break' },
+              { type: 'text', value: 'World' },
+            ],
+          },
+        ],
+      },
+    ]);
+    const md = renderGithub(ast as any);
+    expect(md).toContain('Hello  \nWorld');
+  });
+
   test('linear transforms details, mentions, and strips html', () => {
     const ast = root([
       {
