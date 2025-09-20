@@ -58,10 +58,13 @@ export function renderGithub(ast: Root): string {
     }
   );
 
-  return unified()
-    .use(remarkStringify, stringifyOptions)
-    .use(remarkGfm)
-    .stringify(cloned);
+  return (
+    unified()
+      // Register GFM extensions before stringify so the compiler picks them up
+      .use(remarkGfm)
+      .use(remarkStringify, stringifyOptions)
+      .stringify(cloned)
+  );
 }
 
 function convertNestedDetails(children: Root['children']): void {
@@ -86,8 +89,8 @@ function convertNestedDetails(children: Root['children']): void {
 
 function toMarkdownChildren(children: Root['children']): string {
   return unified()
-    .use(remarkStringify, stringifyOptions)
     .use(remarkGfm)
+    .use(remarkStringify, stringifyOptions)
     .stringify({ type: 'root', children } satisfies Root);
 }
 
@@ -99,7 +102,14 @@ function trimTrailingNewlines(s: string): string {
   return s.replace(/\n+$/, '');
 }
 
+// Prefer the two-space Markdown hard break syntax instead of a trailing
+// backslash so raw Markdown stays clean and readable in GitHub diffs.
 const stringifyOptions = {
   bullet: '-',
   fences: true,
+  handlers: {
+    break() {
+      return '  \n';
+    },
+  },
 } satisfies RemarkStringifyOptions;

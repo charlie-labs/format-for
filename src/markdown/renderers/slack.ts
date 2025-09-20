@@ -80,6 +80,10 @@ function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
 function renderInline(children: PhrasingContent[]): string {
   let s = '';
   for (const c of children) {
+    if (c.type === 'break') {
+      s += '\n';
+      continue;
+    }
     if (c.type === 'text') {
       s += escapeSlackText(c.value ?? '');
       continue;
