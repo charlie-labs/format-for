@@ -109,7 +109,10 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
           if (Object.keys(bits.users).length > 0) {
             nextMaps.linear = { users: bits.users };
           }
-          const rules = buildLinearAutolinks(bits.orgSlug, bits.teamKeys);
+          const rules =
+            bits.orgSlug && bits.teamKeys.length > 0
+              ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
+              : [];
           // Replace only the Linear rules; preserve other families if added later
           nextAutolinks = { ...nextAutolinks, linear: rules };
           lastLinearLoad = Date.now();
@@ -190,10 +193,16 @@ export async function ensureDefaultsForTarget(
         if (Object.keys(bits.users).length > 0) {
           nextMaps.linear = { users: bits.users };
         }
-        const rules = buildLinearAutolinks(bits.orgSlug, bits.teamKeys);
+        const nextAutolinks = {
+          ...(current?.autolinks ?? {}),
+          linear:
+            bits.orgSlug && bits.teamKeys.length > 0
+              ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
+              : [],
+        };
         current = {
           maps: nextMaps,
-          autolinks: { ...(current?.autolinks ?? {}), linear: rules },
+          autolinks: nextAutolinks,
           loadedAt: Date.now(),
         };
         lastLinearLoad = Date.now();
@@ -253,7 +262,10 @@ export async function forceLoadNowForTests(): Promise<void> {
       }
       nextAutolinks = {
         ...nextAutolinks,
-        linear: buildLinearAutolinks(bits.orgSlug, bits.teamKeys),
+        linear:
+          bits.orgSlug && bits.teamKeys.length > 0
+            ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
+            : [],
       };
       lastLinearLoad = Date.now();
     }

@@ -6,3 +6,10 @@ coverage
 .env
 .env.*
 *.env
+
+# Compiled binaries
+*.out
+*.o
+*.so
+*.dylib
+*.exe

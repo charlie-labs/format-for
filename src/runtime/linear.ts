@@ -105,7 +105,7 @@ export async function loadLinearIndex(token: string): Promise<LinearBits> {
         (email.includes('@') ? email.split('@', 1)[0]?.toLowerCase() : '');
       if (!by) continue;
       const label = String(u.displayName ?? u.name ?? by);
-      const slug = orgSlug ?? '';
+      const slug = orgSlug;
       const url = slug
         ? `https://linear.app/${slug}/profiles/${by}`
         : `https://linear.app/profiles/${by}`;
@@ -119,7 +119,7 @@ export async function loadLinearIndex(token: string): Promise<LinearBits> {
 }
 
 export function buildLinearAutolinks(
-  orgSlug: string | undefined,
+  orgSlug: string,
   keys: string[]
 ): AutoLinkRule[] {
   if (!keys.length) return [];
@@ -128,9 +128,6 @@ export function buildLinearAutolinks(
   const sorted = [...new Set(keys)].sort((a, b) => a.localeCompare(b));
   const source = `\\b(${sorted.map(escapeRe).join('|')})-(\\d+)\\b`;
   const pattern = new RegExp(source, 'g');
-  const slug = orgSlug ?? '';
-  const base = slug
-    ? `https://linear.app/${slug}/issue/$1-$2`
-    : `https://linear.app/issue/$1-$2`;
+  const base = `https://linear.app/${orgSlug}/issue/$1-$2`;
   return [{ pattern, urlTemplate: base }];
 }
