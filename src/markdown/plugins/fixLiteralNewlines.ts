@@ -6,7 +6,7 @@ import { visitParents } from 'unist-util-visit-parents';
 /**
  * Convert the literal two-character sequence "\n" in text into mdast hard line
  * breaks. This preserves the author's intent across targets:
- *  - GitHub/Linear: remark-stringify renders `break` as two spaces + newline
+ *  - GitHub/Linear: we render `break` as two spaces + newline
  *  - Slack: our renderer emits a real "\n" for `break`
  *
  * Notes:
@@ -30,7 +30,12 @@ export const remarkFixLiteralNewlines: Plugin<[], Root> = () => {
         (a) => a.type === 'link' || a.type === 'linkReference'
       );
       if (inLink) {
-        const replaced: Text = { type: 'text', value: v.replace(/\\n/g, ' ') };
+        // Collapse any literal "\n" (and adjacent whitespace) to a single space
+        // so link labels never contain multiple spaces.
+        const replaced: Text = {
+          type: 'text',
+          value: v.replace(/\s*\\n\s*/g, ' '),
+        };
         children.splice(idx, 1, replaced);
         return;
       }

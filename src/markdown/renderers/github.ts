@@ -1,8 +1,6 @@
 import { type Html, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
-import remarkStringify, {
-  type Options as RemarkStringifyOptions,
-} from 'remark-stringify';
+import remarkStringify, { type Options as RemarkStringifyOptions } from 'remark-stringify';
 import { unified } from 'unified';
 import { SKIP, visit } from 'unist-util-visit';
 
@@ -59,8 +57,9 @@ export function renderGithub(ast: Root): string {
   );
 
   return unified()
-    .use(remarkStringify, stringifyOptions)
+    // Register GFM extensions before stringify so the compiler picks them up
     .use(remarkGfm)
+    .use(remarkStringify, stringifyOptions)
     .stringify(cloned);
 }
 
@@ -86,8 +85,8 @@ function convertNestedDetails(children: Root['children']): void {
 
 function toMarkdownChildren(children: Root['children']): string {
   return unified()
-    .use(remarkStringify, stringifyOptions)
     .use(remarkGfm)
+    .use(remarkStringify, stringifyOptions)
     .stringify({ type: 'root', children } satisfies Root);
 }
 
@@ -99,7 +98,14 @@ function trimTrailingNewlines(s: string): string {
   return s.replace(/\n+$/, '');
 }
 
+// Prefer the two-space Markdown hard break syntax instead of a trailing
+// backslash so raw Markdown stays clean and readable in GitHub diffs.
 const stringifyOptions = {
   bullet: '-',
   fences: true,
+  handlers: {
+    break() {
+      return '  \n';
+    },
+  },
 } satisfies RemarkStringifyOptions;
