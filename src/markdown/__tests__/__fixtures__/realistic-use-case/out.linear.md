@@ -49,6 +49,8 @@ export function normalizeEmail(s: string): string {
 
 ![diagram](https://example.com/flow.png)
 
+HTML allowed tags: <u>Important</u> and <sup>2</sup>.<br>
+
 Footnote ref[^1].
 
 [^1]: This is a footnote with a Slack user @user and a Slack link [ex](https://ex.com).
