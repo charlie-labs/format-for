@@ -13,14 +13,25 @@ import { escapeSlackText } from '../utils/slackEscape.js';
 
 type AnyChild = RootContent | BlockContent | DefinitionContent;
 
+interface SlackRenderCtx {
+  // Avoid spamming the same warning when many nested items are flattened
+  flattenedListWarned: boolean;
+}
+
 export function renderSlack(ast: Root): string {
   const out: string[] = [];
-  renderNodes(ast.children, out, 0);
+  const ctx: SlackRenderCtx = { flattenedListWarned: false };
+  renderNodes(ast.children, out, 0, ctx);
   // normalize excessive blank lines
   return out.join('').replace(/\n{3,}/g, '\n\n');
 }
 
-function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
+function renderNodes(
+  nodes: AnyChild[],
+  out: string[],
+  depth: number,
+  ctx: SlackRenderCtx
+): void {
   for (const n of nodes) {
     if (n.type === 'paragraph') {
       out.push(renderInline(n.children), '\n\n');
@@ -32,12 +43,12 @@ function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
       continue;
     }
     if (n.type === 'blockquote') {
-      const inner = renderBlockQuoted(n.children);
+      const inner = renderBlockQuoted(n.children, ctx);
       out.push(inner, '\n');
       continue;
     }
     if (n.type === 'list') {
-      renderList(n, out, depth);
+      renderList(n, out, depth, ctx);
       continue;
     }
     if (n.type === 'thematicBreak') {
@@ -70,7 +81,7 @@ function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
     if (n.type === 'details') {
       const summary = n.data?.summary ?? 'Details';
       out.push(`*${escapeSlackText(summary)}*\n`);
-      const body = renderBlockQuoted(n.children);
+      const body = renderBlockQuoted(n.children, ctx);
       out.push(body, '\n');
       continue;
     }
@@ -128,11 +139,19 @@ function renderInline(children: PhrasingContent[]): string {
   return s;
 }
 
-function renderList(node: List, out: string[], depth: number): void {
+function renderList(
+  node: List,
+  out: string[],
+  depth: number,
+  ctx: SlackRenderCtx
+): void {
   const maxDepth = 2;
   const flattened = depth + 1 > maxDepth;
   if (flattened) {
-    console.warn('Slack: flattened list depth > 2');
+    if (!ctx.flattenedListWarned) {
+      console.warn('Slack: flattened list depth > 2');
+      ctx.flattenedListWarned = true;
+    }
   }
 
   const start = typeof node.start === 'number' ? node.start : 1;
@@ -152,7 +171,7 @@ function renderList(node: List, out: string[], depth: number): void {
     out.push(`${prefix} ${content}\n`);
 
     for (const nl of nestedLists) {
-      renderList(nl, out, depth + 1);
+      renderList(nl, out, depth + 1, ctx);
     }
     if (!node.spread) {
       // tight list: no extra blank line
@@ -165,9 +184,12 @@ function renderList(node: List, out: string[], depth: number): void {
   }
 }
 
-function renderBlockQuoted(children: Root['children']): string {
+function renderBlockQuoted(
+  children: Root['children'],
+  ctx: SlackRenderCtx
+): string {
   const tmp: string[] = [];
-  renderNodes(children, tmp, 0);
+  renderNodes(children, tmp, 0, ctx);
   const text = tmp.join('').trimEnd();
   const lines = text.split('\n');
   return lines.map((l) => (l ? `> ${l}` : '>')).join('\n');
