@@ -71,9 +71,19 @@ describe('fixtures: exact outputs per target + warnings', () => {
       test('linear', async () => {
         const input = readFileSync(join(fx.path, 'input.md'), 'utf8');
         const expected = readMaybe(join(fx.path, 'out.linear.md'));
+        const expectedWarnings =
+          readMaybe(join(fx.path, 'warnings.linear.txt'))
+            ?.split('\n')
+            .filter(Boolean) ?? [];
         if (expected != null) {
           const out = await formatFor.linear(input);
           expect(out).toBe(expected);
+        }
+        if (expectedWarnings.length > 0) {
+          const calls = warnSpy.mock.calls.map((args: unknown[]) =>
+            String(args[0] as unknown)
+          );
+          expect(calls).toEqual(expectedWarnings);
         }
       });
 
