@@ -89,15 +89,20 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
       if (!isAllowedHtml(v, opts.allowHtml)) {
         console.warn('Linear: HTML stripped');
 
-        // If we're inside a paragraph and the previous sibling is text that
-        // contains a newline, trim everything after the last newline so we
-        // avoid leaving behind a dangling line without its (stripped) HTML.
+        // If we're inside a paragraph and the previous sibling is text, we may
+        // need to trim back to the last newline — but only when the stripped
+        // HTML actually starts on a new line. Concretely, if the previous text
+        // ends at a newline (or only whitespace after the final newline), then
+        // trimming is safe. Otherwise, do not trim, or we'd delete content on
+        // the same line.
         if (parent.type === 'paragraph') {
           const prev = parent.children[index - 1];
           if (prev && prev.type === 'text') {
             const val = String(prev.value);
             const nl = val.lastIndexOf('\n');
-            if (nl !== -1) {
+            const tail = nl === -1 ? '' : val.slice(nl + 1);
+            // Only trim when everything after the last newline is whitespace.
+            if (nl !== -1 && /^\s*$/.test(tail)) {
               const trimmed = val.slice(0, nl);
               if (trimmed.length === 0) {
                 // Remove the prev text node entirely
