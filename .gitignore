@@ -7,9 +7,3 @@ coverage
 .env.*
 *.env
 
-# Compiled binaries
-*.out
-*.o
-*.so
-*.dylib
-*.exe
