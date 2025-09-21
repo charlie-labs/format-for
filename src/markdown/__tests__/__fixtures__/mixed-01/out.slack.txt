@@ -9,5 +9,7 @@ H | V
 1 | 2
 ```
 
+<https://example.com/img.png|alt>
+
 &lt;u&gt;html underlined&lt;/u&gt;
 

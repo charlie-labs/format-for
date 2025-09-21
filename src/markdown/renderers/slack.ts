@@ -20,6 +20,15 @@ export function renderSlack(ast: Root): string {
   return out.join('').replace(/\n{3,}/g, '\n\n');
 }
 
+// Slack mrkdwn link labels live inside `<url|label>`; the label must not include
+// raw `<`, `>`, `&`, or `|` characters.
+function escapeSlackLabel(t: string): string {
+  return String(t)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\|/g, '&#124;');
+}
 function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
   for (const n of nodes) {
     if (n.type === 'paragraph') {
@@ -60,7 +69,8 @@ function renderNodes(nodes: AnyChild[], out: string[], depth: number): void {
     }
     if (n.type === 'image') {
       console.warn('Slack: images emitted as links');
-      out.push(`<${n.url}|${n.alt || 'image'}>\n\n`);
+      const label = escapeSlackLabel(n.alt || 'image');
+      out.push(`<${n.url}|${label}>\n\n`);
       continue;
     }
     if (n.type === 'html') {
@@ -106,6 +116,14 @@ function renderInline(children: PhrasingContent[]): string {
     }
     if (c.type === 'link') {
       s += `<${c.url}|${renderInline(c.children)}>`;
+      continue;
+    }
+    if (c.type === 'image') {
+      // Slack doesn't support inline images in mrkdwn; emit as a link instead
+      // and warn to make the downgrade visible in fixtures/tests.
+      console.warn('Slack: images emitted as links');
+      const label = escapeSlackLabel(c.alt || 'image');
+      s += `<${c.url}|${label}>`;
       continue;
     }
     if (c.type === 'mention') {

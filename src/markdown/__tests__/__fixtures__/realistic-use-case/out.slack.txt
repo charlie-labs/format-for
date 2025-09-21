@@ -40,6 +40,8 @@ Valid email | 200
 Bad token | 401
 ```
 
+<https://example.com/flow.png|diagram>
+
 HTML allowed tags: &lt;u&gt;Important&lt;/u&gt; and &lt;sup&gt;2&lt;/sup&gt;.&lt;br&gt;
 HTML disallowed inline in a paragraph (to exercise Linear's allowlist): &lt;video src="/noop"&gt;&lt;/video&gt;
 

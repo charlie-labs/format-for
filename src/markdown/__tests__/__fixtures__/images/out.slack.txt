@@ -1,2 +1,4 @@
+<https://example.com/diagram.svg|diagram>
 
+<https://example.com/photo.jpg|photo alt>
 
