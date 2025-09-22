@@ -25,7 +25,7 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
     });
     expect(outSlack).toContain('<@U42>');
     expect(outSlack).toContain('<#C77|dev>');
-    expect(outSlack).toContain('&lt;!here&gt;');
+    expect(outSlack).toContain('<!here>');
     expect(outSlack).toContain('<https://ex.com|Ex>');
 
     const outLinear = await formatFor.linear(input, {

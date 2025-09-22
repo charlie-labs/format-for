@@ -1,4 +1,5 @@
 import {
+  type Html,
   type Link,
   type Parent,
   type PhrasingContent,
@@ -69,6 +70,54 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
     // 1) Block-level: '+++ Title' ... '+++' → details (with nesting)
     canonicalizeDetailsInParent(root);
 
+    // 1.5) Convert Slack specials (and defensively, other Slack angle forms) that
+    // were parsed as `html` nodes into canonical `mention` nodes so renderers can
+    // handle them uniformly.
+    visit(
+      root,
+      'html',
+      (node: Html, index: number | undefined, parent: Parent | undefined) => {
+        if (!parent || typeof index !== 'number') return;
+        const v = String(node.value ?? '');
+
+        // <!here>, <!channel>, <!everyone>
+        let m = /^<!\s*(here|channel|everyone)\s*>$/.exec(v);
+        if (m) {
+          const mention: MentionNode = {
+            type: 'mention',
+            data: { subtype: 'special', id: m[1] },
+            children: [],
+          };
+          parent.children.splice(index, 1, mention);
+          return [CONTINUE, index + 1];
+        }
+
+        // Defensively handle Slack user/channel forms if they ever appear as `html`.
+        // <@U123>
+        m = /^<@([A-Z][A-Z0-9]+)>$/.exec(v);
+        if (m) {
+          const mention: MentionNode = {
+            type: 'mention',
+            data: { subtype: 'user', id: m[1] },
+            children: [],
+          };
+          parent.children.splice(index, 1, mention);
+          return [CONTINUE, index + 1];
+        }
+        // <#C123|label>
+        m = /^<#([A-Z][A-Z0-9]+)\|([^>]+)>$/.exec(v);
+        if (m) {
+          const mention: MentionNode = {
+            type: 'mention',
+            data: { subtype: 'channel', id: m[1], label: m[2] },
+            children: [],
+          };
+          parent.children.splice(index, 1, mention);
+          return [CONTINUE, index + 1];
+        }
+      }
+    );
+
     // 2) Inline text normalization
     visit(
       root,
@@ -77,7 +126,9 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         if (!parent || isCodeLike(parent)) return;
 
         const fragments: PhrasingContent[] = [];
-        const input = String(node.value ?? '');
+        const input = String(node.value ?? '')
+          // Normalize HTML-escaped Slack specials that may appear in plain text.
+          .replace(/&lt;!(here|channel|everyone)&gt;/g, '<!>');
         let lastIndex = 0;
         let sawAnyMatch = false;
 

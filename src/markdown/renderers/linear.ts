@@ -23,7 +23,14 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     ) => {
       let text = '';
       if (node.data?.subtype === 'user') {
-        text = node.data.label ? `@${node.data.label}` : '@user';
+        // Keep literal Slack ID by default when no label/mapping is present
+        if (node.data.label) {
+          text = `@${node.data.label}`;
+        } else if (node.data.id) {
+          text = `@${node.data.id}`;
+        } else {
+          text = '@user';
+        }
       } else if (node.data?.subtype === 'channel') {
         text = node.data.label ? `#${node.data.label}` : '#channel';
       } else if (node.data?.subtype === 'special') {

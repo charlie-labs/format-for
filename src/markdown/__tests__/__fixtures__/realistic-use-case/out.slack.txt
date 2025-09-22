@@ -1,6 +1,6 @@
 *Project Alpha: Auth flow update (fixture input)*
 
-Short summary: We are migrating the auth callback. FYI &lt;!here&gt; see <https://charlie-labs.slack.com/archives/C12345/p1726800000000|auth-discussion>. Ping <@U02AAAAAA> and <#C02OPS|ops>. Old flow ~deprecated~.
+Short summary: We are migrating the auth callback. FYI <!here> see <https://charlie-labs.slack.com/archives/C12345/p1726800000000|auth-discussion>. Ping <@U02AAAAAA> and <#C02OPS|ops>. Old flow ~deprecated~.
 
 *Decisions*
 > • Keep email-first login; remove ~magic-link-only~ path.
@@ -10,7 +10,7 @@ Short summary: We are migrating the auth callback. FYI &lt;!here&gt; see <https:
 > *Edge cases*
 > > • Safari ITP and cookies.
 > > • If user is SSO-only, show a link back.
-> > • Mention special &lt;!channel&gt; to alert during rollout.
+> > • Mention special <!channel> to alert during rollout.
 > • Table and images should still render cross-platform.
 *Tasks*
 

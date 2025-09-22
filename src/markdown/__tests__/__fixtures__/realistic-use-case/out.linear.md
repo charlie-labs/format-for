@@ -1,6 +1,6 @@
 # Project Alpha: Auth flow update (fixture input)
 
-Short summary: We are migrating the auth callback. FYI  see [auth-discussion](https://charlie-labs.slack.com/archives/C12345/p1726800000000). Ping @user and #ops. Old flow ~~deprecated~~.
+Short summary: We are migrating the auth callback. FYI @here see [auth-discussion](https://charlie-labs.slack.com/archives/C12345/p1726800000000). Ping @U02AAAAAA and #ops. Old flow ~~deprecated~~.
 
 +++ Decisions
 
@@ -12,7 +12,7 @@ Short summary: We are migrating the auth callback. FYI  see [auth-discussion](ht
 
 - Safari ITP and cookies.
 - If user is SSO-only, show a link back.
-- Mention special  to alert during rollout.
+- Mention special @channel to alert during rollout.
 
 +++
 
@@ -54,4 +54,4 @@ HTML disallowed inline in a paragraph (to exercise Linear's allowlist):&#x20;
 
 Footnote ref[^1].
 
-[^1]: This is a footnote with a Slack user @user and a Slack link [ex](https://ex.com).
+[^1]: This is a footnote with a Slack user @U0FOOT and a Slack link [ex](https://ex.com).
