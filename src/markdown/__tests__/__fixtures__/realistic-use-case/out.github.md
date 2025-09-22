@@ -1,6 +1,6 @@
 # Project Alpha: Auth flow update (fixture input)
 
-Short summary: We are migrating the auth callback. FYI <!here> see [auth-discussion](https://charlie-labs.slack.com/archives/C12345/p1726800000000). Ping @U02AAAAAA and #ops. Old flow ~~deprecated~~.
+Short summary: We are migrating the auth callback. FYI @here see [auth-discussion](https://charlie-labs.slack.com/archives/C12345/p1726800000000). Ping @U02AAAAAA and #ops. Old flow ~~deprecated~~.
 
 <details>
 <summary>Decisions</summary>
@@ -14,7 +14,7 @@ Short summary: We are migrating the auth callback. FYI <!here> see [auth-discuss
 
 - Safari ITP and cookies.
 - If user is SSO-only, show a link back.
-- Mention special <!channel> to alert during rollout.
+- Mention special @channel to alert during rollout.
 </details>
 
 - Table and images should still render cross-platform.
