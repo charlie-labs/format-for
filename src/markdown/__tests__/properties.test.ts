@@ -2,7 +2,6 @@ import fc from 'fast-check';
 import { describe, expect, test } from 'vitest';
 
 import { formatFor } from '../../index.js';
-
 describe('property tests', () => {
   test('never modify inlineCode/code contents', async () => {
     const safeStr = fc
@@ -17,9 +16,14 @@ describe('property tests', () => {
     const safeFence = fc
       .string()
       .filter((s) => !s.includes('```') && !s.includes('\r'));
+    const safeHead = fc
+      .string()
+      // Avoid pathological heads that cause the entire doc to parse as a single HTML node
+      // (e.g., starting with "<" like "<?" or "<div", which Slack/Linear intentionally strip).
+      .filter((s) => !/^\s*</.test(s));
     await fc.assert(
       fc.asyncProperty(
-        fc.tuple(fc.string(), safeStr, safeFence),
+        fc.tuple(safeHead, safeStr, safeFence),
         async ([a, b, c]) => {
           const inline = `${a}\n\nHere is \`${b}\` inside text.\n\n\`\`\`\n${c}\n\`\`\`\n`;
           const targets: (keyof typeof formatFor)[] = [
@@ -44,7 +48,6 @@ describe('property tests', () => {
       }
     );
   });
-
   test('Slack: never emit >>> unless block is at end (we never emit it)', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (s) => {
