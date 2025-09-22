@@ -26,6 +26,20 @@ export function renderSlack(ast: Root): string {
   return out.join('').replace(/\n{3,}/g, '\n\n');
 }
 
+// Slack mrkdwn link labels live inside `<url|label>` and must not include raw `|`, `<`, `>`, or `&`.
+// This escapes those characters and avoids double-escaping common entities already present
+// in `renderInline(...)` output (e.g., `&amp;`, `&lt;`, `&gt;`, `&#124;`).
+function escapeSlackLabel(t: string): string {
+  return (
+    String(t)
+      // Escape ampersands except when they start a known entity we emit elsewhere
+      .replace(/&(?!(?:amp|lt|gt|#124);)/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\|/g, '&#124;')
+  );
+}
+
 function renderNodes(
   nodes: AnyChild[],
   out: string[],
@@ -71,7 +85,8 @@ function renderNodes(
     }
     if (n.type === 'image') {
       console.warn('Slack: images emitted as links');
-      out.push(`<${n.url}|${n.alt || 'image'}>\n\n`);
+      const label = escapeSlackLabel(n.alt || 'image');
+      out.push(`<${n.url}|${label}>\n\n`);
       continue;
     }
     if (n.type === 'html') {
@@ -116,7 +131,16 @@ function renderInline(children: PhrasingContent[]): string {
       continue;
     }
     if (c.type === 'link') {
-      s += `<${c.url}|${renderInline(c.children)}>`;
+      const label = escapeSlackLabel(renderInline(c.children));
+      s += `<${c.url}|${label}>`;
+      continue;
+    }
+    if (c.type === 'image') {
+      // Slack doesn't support inline images in mrkdwn; emit as a link instead
+      // and warn to make the downgrade visible in fixtures/tests.
+      console.warn('Slack: images emitted as links');
+      const label = escapeSlackLabel(c.alt || 'image');
+      s += `<${c.url}|${label}>`;
       continue;
     }
     if (c.type === 'mention') {

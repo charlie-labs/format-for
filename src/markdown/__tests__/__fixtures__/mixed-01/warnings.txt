@@ -1,1 +1,2 @@
 Slack: table downgraded to code block
+Slack: images emitted as links
