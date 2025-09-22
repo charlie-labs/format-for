@@ -1,1 +1,1 @@
-Linear: HTML paragraph stripped
+Linear: HTML stripped
