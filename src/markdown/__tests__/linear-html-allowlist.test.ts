@@ -17,7 +17,7 @@ describe('Linear HTML allowlist (strict)', () => {
     expect(out).toContain('<!-- a comment -->');
   });
 
-  test('strips the entire paragraph when any disallowed tag appears and preserves siblings', async () => {
+  test('drops only disallowed HTML within a paragraph; keeps allowed HTML and siblings', async () => {
     const input = [
       'before',
       '',
@@ -26,9 +26,9 @@ describe('Linear HTML allowlist (strict)', () => {
       'after',
     ].join('\n');
     const out = await formatFor.linear(input);
-    // Middle paragraph removed entirely
+    // Disallowed <script> and its contents removed, allowed <u> remains
     expect(out).not.toMatch(/<script>|nope\(\)/);
-    expect(out).not.toContain('ok');
+    expect(out).toContain('<u>ok</u>');
     // Adjacent paragraphs remain
     expect(out).toMatch(/before/);
     expect(out).toMatch(/after/);
