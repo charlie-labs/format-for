@@ -32,7 +32,13 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
           text = '@user';
         }
       } else if (node.data?.subtype === 'channel') {
-        text = node.data.label ? `#${node.data.label}` : '#channel';
+        if (node.data.label) {
+          text = `#${node.data.label}`;
+        } else if (node.data.id) {
+          text = `#${node.data.id}`;
+        } else {
+          text = '#channel';
+        }
       } else if (node.data?.subtype === 'special') {
         text = node.data.id ? `@${node.data.id}` : '';
       }
