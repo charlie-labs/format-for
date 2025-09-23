@@ -64,4 +64,58 @@ describe('slack: link/image label escaping', () => {
     expect(out).not.toContain('<|');
     expect(out).toContain('Inline');
   });
+
+  test('inline link: missing/whitespace URL falls back to label; URLs are trimmed', () => {
+    const ast = root([
+      {
+        type: 'paragraph',
+        children: [
+          {
+            type: 'link',
+            url: '',
+            children: [{ type: 'text', value: 'No URL' }],
+          },
+          { type: 'text', value: ' and ' },
+          {
+            type: 'link',
+            url: '   ',
+            children: [{ type: 'text', value: 'Spaces' }],
+          },
+          { type: 'text', value: ' and ' },
+          {
+            type: 'link',
+            url: '  https://trim.me  ',
+            children: [{ type: 'text', value: 'Trim' }],
+          },
+        ],
+      },
+    ]);
+    const out = renderSlack(ast as any);
+    // Falls back to label when URL is empty/whitespace
+    expect(out).toContain('No URL');
+    expect(out).toContain('Spaces');
+    expect(out).not.toContain('<|');
+    // Trims surrounding whitespace in URLs
+    expect(out).toContain('<https://trim.me|Trim>');
+  });
+
+  test('inline link: empty label renders as bare URL', () => {
+    const ast = root([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'link', url: 'https://example.com', children: [] },
+          { type: 'text', value: ' and ' },
+          {
+            type: 'link',
+            url: ' https://example.com ',
+            children: [{ type: 'text', value: '' }],
+          },
+        ],
+      },
+    ]);
+    const out = renderSlack(ast as any);
+    expect(out).toContain('<https://example.com>');
+    expect(out).not.toContain('<https://example.com|>');
+  });
 });
