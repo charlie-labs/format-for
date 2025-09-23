@@ -30,11 +30,15 @@ type Snapshot = {
 
 const SLACK_TTL_MS = 10 * 60_000; // 10m
 const LINEAR_TTL_MS = 60 * 60_000; // 60m
+// Back-off window after a failed attempt to avoid repeated network churn
+const ERROR_RETRY_MS = 60_000; // 1m
 
 let current: Snapshot | undefined;
 let inflight: Promise<void> | undefined;
 let lastSlackLoad = 0;
 let lastLinearLoad = 0;
+let lastSlackAttempt = 0;
+let lastLinearAttempt = 0;
 
 /**
  * Ensure runtime defaults are warmed in the background based on TTLs.
@@ -53,14 +57,18 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
   const wantsSlack = hintTarget === 'slack';
   const wantsLinear = hintTarget === 'github' || hintTarget === 'linear';
 
-  const needSlack =
+  const needSlackBase =
     !!slackToken &&
     now - lastSlackLoad > SLACK_TTL_MS &&
     (!hintTarget || wantsSlack);
-  const needLinear =
+  const needLinearBase =
     !!linearToken &&
     now - lastLinearLoad > LINEAR_TTL_MS &&
     (!hintTarget || wantsLinear);
+  const cooledSlack = now - lastSlackAttempt > ERROR_RETRY_MS;
+  const cooledLinear = now - lastLinearAttempt > ERROR_RETRY_MS;
+  const needSlack = needSlackBase && cooledSlack;
+  const needLinear = needLinearBase && cooledLinear;
 
   if ((needSlack || needLinear) && !inflight) {
     inflight = (async () => {
@@ -74,6 +82,10 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
           teamKeys: [],
           users: {},
         };
+        // Record attempts so we can throttle failures
+        if (needSlack) lastSlackAttempt = Date.now();
+        if (needLinear) lastLinearAttempt = Date.now();
+
         const promises: [
           Promise<NonNullable<MentionMaps['slack']>>,
           Promise<LinearBits>,
@@ -97,10 +109,14 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
           }
           lastSlackLoad = Date.now();
         } else if (slackRes.status === 'rejected') {
-          console.warn(
-            '[format-for] Slack defaults refresh failed:',
-            slackRes.reason
-          );
+          // Swallow errors by default to avoid polluting output. Enable logs by setting
+          // FORMAT_FOR_LOG_RUNTIME_ERRORS=1 in the env if needed for debugging.
+          if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
+            console.warn(
+              '[format-for] Slack defaults refresh failed:',
+              slackRes.reason
+            );
+          }
         }
 
         let nextAutolinks = current?.autolinks ?? {};
@@ -117,10 +133,12 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
           nextAutolinks = { ...nextAutolinks, linear: rules };
           lastLinearLoad = Date.now();
         } else if (linearRes.status === 'rejected') {
-          console.warn(
-            '[format-for] Linear defaults refresh failed:',
-            linearRes.reason
-          );
+          if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
+            console.warn(
+              '[format-for] Linear defaults refresh failed:',
+              linearRes.reason
+            );
+          }
         }
 
         current = {
@@ -130,7 +148,9 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
         };
       } catch (err) {
         // Keep a best-effort model; failures shouldn't block formatting.
-        console.warn('[format-for] defaults loader failed:', err);
+        if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
+          console.warn('[format-for] defaults loader failed:', err);
+        }
       } finally {
         inflight = undefined;
       }
@@ -167,16 +187,25 @@ export async function ensureDefaultsForTarget(
   if (target === 'slack') {
     if (!hasSlack && slackToken) {
       // Block to load Slack once for first use
-      try {
-        const slackMaps = await loadSlackCatalog(slackToken);
-        current = {
-          maps: { ...(current?.maps ?? {}), slack: slackMaps },
-          autolinks: current?.autolinks,
-          loadedAt: Date.now(),
-        };
-        lastSlackLoad = Date.now();
-      } catch (err) {
-        console.warn('[format-for] initial Slack defaults load failed:', err);
+      const now = Date.now();
+      if (now - lastSlackAttempt > ERROR_RETRY_MS) {
+        lastSlackAttempt = now;
+        try {
+          const slackMaps = await loadSlackCatalog(slackToken);
+          current = {
+            maps: { ...(current?.maps ?? {}), slack: slackMaps },
+            autolinks: current?.autolinks,
+            loadedAt: Date.now(),
+          };
+          lastSlackLoad = Date.now();
+        } catch (err) {
+          if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
+            console.warn(
+              '[format-for] initial Slack defaults load failed:',
+              err
+            );
+          }
+        }
       }
     } else {
       // Kick a background refresh if TTL expired
@@ -187,27 +216,36 @@ export async function ensureDefaultsForTarget(
     const needsBlock =
       (!hasLinearUsers || !hasLinearAutolinks) && !!linearToken;
     if (needsBlock && linearToken) {
-      try {
-        const bits = await loadLinearIndex(linearToken);
-        const nextMaps: MentionMaps = { ...(current?.maps ?? {}) };
-        if (Object.keys(bits.users).length > 0) {
-          nextMaps.linear = { users: bits.users };
+      const now = Date.now();
+      if (now - lastLinearAttempt > ERROR_RETRY_MS) {
+        lastLinearAttempt = now;
+        try {
+          const bits = await loadLinearIndex(linearToken);
+          const nextMaps: MentionMaps = { ...(current?.maps ?? {}) };
+          if (Object.keys(bits.users).length > 0) {
+            nextMaps.linear = { users: bits.users };
+          }
+          const nextAutolinks = {
+            ...(current?.autolinks ?? {}),
+            linear:
+              bits.orgSlug && bits.teamKeys.length > 0
+                ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
+                : [],
+          };
+          current = {
+            maps: nextMaps,
+            autolinks: nextAutolinks,
+            loadedAt: Date.now(),
+          };
+          lastLinearLoad = Date.now();
+        } catch (err) {
+          if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
+            console.warn(
+              '[format-for] initial Linear defaults load failed:',
+              err
+            );
+          }
         }
-        const nextAutolinks = {
-          ...(current?.autolinks ?? {}),
-          linear:
-            bits.orgSlug && bits.teamKeys.length > 0
-              ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
-              : [],
-        };
-        current = {
-          maps: nextMaps,
-          autolinks: nextAutolinks,
-          loadedAt: Date.now(),
-        };
-        lastLinearLoad = Date.now();
-      } catch (err) {
-        console.warn('[format-for] initial Linear defaults load failed:', err);
       }
     } else {
       ensureRuntimeDefaults(target);
@@ -234,22 +272,34 @@ export function resetRuntimeDefaultsForTests(): void {
   inflight = undefined;
   lastSlackLoad = 0;
   lastLinearLoad = 0;
+  lastSlackAttempt = 0;
+  lastLinearAttempt = 0;
 }
 
 export async function forceLoadNowForTests(): Promise<void> {
   const slackToken = safeEnv('SLACK_BOT_TOKEN');
   const linearToken = safeEnv('LINEAR_API_KEY');
   try {
+    const emptySlack: NonNullable<MentionMaps['slack']> = {
+      users: {},
+      channels: {},
+    };
+    const emptyLinear: LinearBits = {
+      orgSlug: undefined,
+      teamKeys: [],
+      users: {},
+    };
     const [slackMaps, linearBits] = await Promise.allSettled([
-      slackToken ? loadSlackCatalog(slackToken) : Promise.resolve({}),
-      linearToken
-        ? loadLinearIndex(linearToken)
-        : Promise.resolve({ orgSlug: undefined, teamKeys: [], users: {} }),
+      slackToken ? loadSlackCatalog(slackToken) : Promise.resolve(emptySlack),
+      linearToken ? loadLinearIndex(linearToken) : Promise.resolve(emptyLinear),
     ] as const);
     const nextMaps: MentionMaps = { ...(current?.maps ?? {}) };
     if (
       slackMaps.status === 'fulfilled' &&
-      Object.keys(slackMaps.value).length > 0
+      ((slackMaps.value.users &&
+        Object.keys(slackMaps.value.users).length > 0) ||
+        (slackMaps.value.channels &&
+          Object.keys(slackMaps.value.channels).length > 0))
     ) {
       nextMaps.slack = slackMaps.value;
       lastSlackLoad = Date.now();
@@ -275,6 +325,8 @@ export async function forceLoadNowForTests(): Promise<void> {
       loadedAt: Date.now(),
     };
   } catch (err) {
-    console.warn('[format-for] test force-load failed:', err);
+    if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
+      console.warn('[format-for] test force-load failed:', err);
+    }
   }
 }

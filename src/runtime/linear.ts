@@ -18,7 +18,6 @@ type UsersData = {
       name?: string;
       displayName?: string;
       email?: string;
-      username?: string;
     }[];
   };
 };
@@ -74,7 +73,8 @@ export async function loadLinearIndex(token: string): Promise<LinearBits> {
     afterTeams = pi?.hasNextPage ? String(pi.endCursor ?? '') : undefined;
   } while (afterTeams);
 
-  // Fetch all users; map by username/handle if available; fall back to email local-part.
+  // Fetch all users; derive a handle from email local-part when available,
+  // otherwise synthesize from displayName/name by lowercasing and stripping spaces.
   const users: Record<string, { url: string; label?: string }> = {};
   let afterUsers: string | undefined;
   do {
@@ -82,7 +82,7 @@ export async function loadLinearIndex(token: string): Promise<LinearBits> {
       query Users($after: String) {
         users(first: 250, after: $after) {
           pageInfo { hasNextPage endCursor }
-          nodes { id name displayName email username }
+          nodes { id name displayName email }
         }
       }
     `;
@@ -96,13 +96,15 @@ export async function loadLinearIndex(token: string): Promise<LinearBits> {
     }
     const nodes = json?.data?.users?.nodes ?? [];
     for (const u of nodes) {
-      const username = String(u.username ?? '')
-        .trim()
-        .toLowerCase();
       const email = String(u.email ?? '');
-      const by =
-        username ||
-        (email.includes('@') ? email.split('@', 1)[0]?.toLowerCase() : '');
+      const emailLocal = email.includes('@')
+        ? email.split('@', 1)[0]?.toLowerCase()
+        : '';
+      const fromName = String(u.displayName ?? u.name ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '');
+      const by = emailLocal || fromName;
       if (!by) continue;
       const label = String(u.displayName ?? u.name ?? by);
       const slug = orgSlug;
