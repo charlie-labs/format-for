@@ -241,12 +241,22 @@ function renderList(
       (c): c is List => c.type === 'list'
     );
     const content = renderInline(flattenParagraph(nonListBlocks), ctx);
-    // Preserve task list state by echoing [x]/[ ] for items with a boolean `checked`.
-    // Non-task items (checked is undefined/null) remain unchanged.
-    const taskPrefix =
-      typeof item.checked === 'boolean' ? (item.checked ? '[x] ' : '[ ] ') : '';
-    // Trim the assembled line to avoid trailing whitespace (notably for empty-content items).
-    const line = `${prefix} ${taskPrefix}${content}`.trimEnd();
+    // Build the list line from parts to keep spacing simple and predictable.
+    // Parts: prefix (bullet/indent) + optional task marker + optional inline content.
+    const parts: string[] = [prefix];
+    if (typeof item.checked === 'boolean') {
+      parts.push(item.checked ? '[x]' : '[ ]');
+    }
+    const hasContent = content.length > 0;
+    if (hasContent) {
+      parts.push(content);
+    }
+    let line = parts.join(' ');
+    // Compatibility: only trim when there is no inline content to avoid removing
+    // any intentional trailing spaces that may exist within `content`.
+    if (!hasContent) {
+      line = line.trimEnd();
+    }
     out.push(`${line}\n`);
 
     for (const nl of nestedLists) {
