@@ -91,7 +91,9 @@ function convertNestedDetails(
     const summary =
       (typeof n.data?.summary === 'string' ? n.data.summary : undefined) ??
       'Details';
-    const inner = trimTrailingNewlines(toMarkdownChildren(n.children, stringify));
+    const inner = trimTrailingNewlines(
+      toMarkdownChildren(n.children, stringify)
+    );
     const value = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
     const htmlNode: Html = { type: 'html', value };
     parent.children.splice(index, 1, htmlNode);

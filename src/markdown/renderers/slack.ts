@@ -289,11 +289,7 @@ function renderList(
       (c): c is List => c.type === 'list'
     );
 
-    const content = renderInline(
-      flattenParagraph(nonListBlocks),
-      ctx,
-      options
-    );
+    const content = renderInline(flattenParagraph(nonListBlocks), ctx, options);
     // Build the list line from parts to keep spacing simple and predictable.
     // Parts: prefix (bullet/indent) + optional task marker + optional inline content.
     const parts: string[] = [prefix];
