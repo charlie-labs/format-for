@@ -3,202 +3,507 @@
 [![CI](https://github.com/charlie-labs/format-for/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/charlie-labs/format-for/actions/workflows/ci.yml)
 [![Bun](https://img.shields.io/badge/bun-1.x-000)](https://bun.sh)
 
-> Visibility: **private** • Package: `format-for`
+One Markdown input → clean output for GitHub, Slack, or Linear.
 
-A minimal, fast Bun + TypeScript project scaffold with consistent tooling:
+You don’t need to know the input’s dialect. Hand us Markdown that might mix Linear fences, Slack `<url|label>` links/mentions, and GFM. We parse once and render target‑aware output with predictable, safe degradations and explicit warnings.
 
-> **Default branch:** Repos created from this template inherit the `master` branch. Rename it to `main` after initialization if that matches your workflow.
+## Contents
 
-- TypeScript (ESM, strict)
-- ESLint + Prettier for linting/formatting
-- Vitest test runner (invoked via `bun run test`)
-- Husky + lint-staged pre-commit checks
-- GitHub Actions CI (typecheck, lint, test)
-- Build & metadata tooling: `bun run build` drives `zshy` (configured via the `"zshy"` key in package.json) to emit dual CJS/ESM bundles; CI also runs `bun run build` to regenerate `package.json` metadata and catch drift
-
-This repo was initialized from `charlie-labs/bun-lib-template`.
-
----
-
-## Table of contents
-
-- [Getting started](#getting-started)
-- [Scripts](#scripts)
-- [Project structure](#project-structure)
-- [Development](#development)
-- [Testing](#testing)
-- [CI](#ci)
-- [Configuration](#configuration)
-- [Conventions](#conventions)
-- [Keeping up to date](#keeping-up-to-date)
-- [Releasing](#releasing-optional)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Example: one input → three outputs](#example-one-input--three-outputs)
+- [Concepts](#concepts)
+- [API](#api)
+- [Target behavior highlights](#target-behavior-highlights)
+- [Recipes](#recipes)
+- [Warnings and safety](#warnings-and-safety)
+- [Performance and idempotency](#performance-and-idempotency)
+- [Contributing](#contributing)
 - [License](#license)
 
----
+## Install
 
-## Getting started
-
-### Prerequisites
-
-- **Bun** 1.x (`curl -fsSL https://bun.sh/install | bash`)
-
-### Setup
+This package is ESM‑first with a CJS fallback and works in Bun or Node.
 
 ```bash
-# Install dependencies
-bun install
+bun add format-for
+# or
+npm i format-for
+```
 
-# Verify everything is wired
+## Quick start
+
+```ts
+import { formatFor } from 'format-for';
+
+const md = `
++++ Summary
+Collapsible content
++++
+
+See @riley in #dev and <https://example.com|site>.
+`;
+
+const gh = await formatFor.github(md);
+const slack = await formatFor.slack(md);
+const linear = await formatFor.linear(md);
+```
+
+Prefer to inject live Slack/Linear defaults (real users/channels, org/team autolinks)? Use the factory:
+
+```ts
+import { createFormatFor, createEnvDefaultsProvider } from 'format-for';
+
+const ff = createFormatFor({
+  defaults: createEnvDefaultsProvider(), // reads SLACK_BOT_TOKEN / LINEAR_API_KEY if present
+});
+
+const out = await ff.slack('Ping @riley in #dev');
+```
+
+## Example: one input → three outputs
+
+Below is a realistic mixed‑syntax input (taken from our test fixtures), followed by the exact strings returned for each target.
+
+<details>
+<summary><strong>Input (Markdown, mixed Slack/Linear/GFM)</strong></summary>
+
+````md
+# Project Alpha: Auth flow update (fixture input)
+
+Short summary: We are migrating the auth callback. FYI <!here> see <https://charlie-labs.slack.com/archives/C12345/p1726800000000|auth-discussion>. Ping <@U02AAAAAA> and <#C02OPS|ops>. Old flow ~deprecated~.
+
++++ Decisions
+
+- Keep email-first login; remove ~magic-link-only~ path.
+- Links: Markdown [spec](https://spec.commonmark.org) and Slack form <https://example.com|Docs>.
+- Include a bare URL too: <https://example.org>.
+
++++ Edge cases
+
+- Safari ITP and cookies.
+- If user is SSO-only, show a link back.
+- Mention special <!channel> to alert during rollout.
+
++++
+
+- Table and images should still render cross-platform.
+
++++
+
+## Tasks
+
+1. Backend
+   - Add POST /v2/auth/verify
+     - Increase rate limit from 30 to 60
+2. Frontend
+   - Update callback handler
+   - Add retry UI
+
+> Note: rollout starts Monday. Coordinate with #release and @riley.
+
+### Code sample
+
+```ts
+// `+++` inside code should NOT create a details block.
+export function normalizeEmail(s: string): string {
+  return s.trim().toLowerCase();
+}
+```
+
+### Cases
+
+| Case        | Expected |
+| ----------- | -------- |
+| Valid email | 200      |
+| Bad token   | 401      |
+
+![diagram](https://example.com/flow.png)
+
+HTML allowed tags: <u>Important</u> and <sup>2</sup>.<br>
+HTML disallowed inline in a paragraph (to exercise Linear's allowlist): <video src="/noop"></video>
+
+<div>Standalone HTML block that should be stripped on Slack/Linear</div>
+
+Footnote ref[^1].
+
+[^1]: This is a footnote with a Slack user <@U0FOOT> and a Slack link <https://ex.com|ex>.
+````
+
+</details>
+
+<details>
+<summary><strong>GitHub output (exact value)</strong></summary>
+
+````md
+# Project Alpha: Auth flow update (fixture input)
+
+Short summary: We are migrating the auth callback. FYI @here see [auth-discussion](https://charlie-labs.slack.com/archives/C12345/p1726800000000). Ping @U02AAAAAA and #ops. Old flow ~~deprecated~~.
+
+<details>
+<summary>Decisions</summary>
+
+- Keep email-first login; remove ~~magic-link-only~~ path.
+- Links: Markdown [spec](https://spec.commonmark.org) and Slack form [Docs](https://example.com).
+- Include a bare URL too: <https://example.org>.
+
+<details>
+<summary>Edge cases</summary>
+
+- Safari ITP and cookies.
+- If user is SSO-only, show a link back.
+- Mention special @channel to alert during rollout.
+</details>
+
+- Table and images should still render cross-platform.
+</details>
+
+## Tasks
+
+1. Backend
+   - Add POST /v2/auth/verify
+     - Increase rate limit from 30 to 60
+2. Frontend
+   - Update callback handler
+   - Add retry UI
+
+> Note: rollout starts Monday. Coordinate with #release and @riley.
+
+### Code sample
+
+```ts
+// `+++` inside code should NOT create a details block.
+export function normalizeEmail(s: string): string {
+  return s.trim().toLowerCase();
+}
+```
+
+### Cases
+
+| Case        | Expected |
+| ----------- | -------- |
+| Valid email | 200      |
+| Bad token   | 401      |
+
+![diagram](https://example.com/flow.png)
+
+HTML allowed tags: <u>Important</u> and <sup>2</sup>.<br>
+HTML disallowed inline in a paragraph (to exercise Linear's allowlist): <video src="/noop"></video>
+
+<div>Standalone HTML block that should be stripped on Slack/Linear</div>
+
+Footnote ref[^1].
+
+[^1]: This is a footnote with a Slack user @U0FOOT and a Slack link [ex](https://ex.com).
+````
+
+</details>
+
+<details>
+<summary><strong>Linear output (exact value)</strong></summary>
+
+````md
+# Project Alpha: Auth flow update (fixture input)
+
+Short summary: We are migrating the auth callback. FYI @here see [auth-discussion](https://charlie-labs.slack.com/archives/C12345/p1726800000000). Ping @U02AAAAAA and #ops. Old flow ~~deprecated~~.
+
++++ Decisions
+
+- Keep email-first login; remove ~~magic-link-only~~ path.
+- Links: Markdown [spec](https://spec.commonmark.org) and Slack form [Docs](https://example.com).
+- Include a bare URL too: <https://example.org>.
+
++++ Edge cases
+
+- Safari ITP and cookies.
+- If user is SSO-only, show a link back.
+- Mention special @channel to alert during rollout.
+
++++
+
+- Table and images should still render cross-platform.
+
++++
+
+## Tasks
+
+1. Backend
+   - Add POST /v2/auth/verify
+     - Increase rate limit from 30 to 60
+2. Frontend
+   - Update callback handler
+   - Add retry UI
+
+> Note: rollout starts Monday. Coordinate with #release and @riley.
+
+### Code sample
+
+```ts
+// `+++` inside code should NOT create a details block.
+export function normalizeEmail(s: string): string {
+  return s.trim().toLowerCase();
+}
+```
+
+### Cases
+
+| Case        | Expected |
+| ----------- | -------- |
+| Valid email | 200      |
+| Bad token   | 401      |
+
+![diagram](https://example.com/flow.png)
+
+HTML allowed tags: <u>Important</u> and <sup>2</sup>.<br>
+HTML disallowed inline in a paragraph (to exercise Linear's allowlist):
+
+Footnote ref[^1].
+
+[^1]: This is a footnote with a Slack user @U0FOOT and a Slack link [ex](https://ex.com).
+````
+
+</details>
+
+<details>
+<summary><strong>Slack output (exact value)</strong></summary>
+
+````
+
+_Project Alpha: Auth flow update (fixture input)_
+
+Short summary: We are migrating the auth callback. FYI <!here> see <https://charlie-labs.slack.com/archives/C12345/p1726800000000|auth-discussion>. Ping <@U02AAAAAA> and <#C02OPS|ops>. Old flow ~deprecated~.
+
+_Decisions_
+
+> • Keep email-first login; remove ~magic-link-only~ path.
+> • Links: Markdown <https://spec.commonmark.org|spec> and Slack form <https://example.com|Docs>.
+> • Include a bare URL too: <https://example.org|https://example.org>.
+>
+> _Edge cases_
+>
+> > • Safari ITP and cookies.
+> > • If user is SSO-only, show a link back.
+> > • Mention special <!channel> to alert during rollout.
+> > • Table and images should still render cross-platform.
+> > _Tasks_
+
+1. Backend
+   • Add POST /v2/auth/verify
+   → Increase rate limit from 30 to 60
+
+2. Frontend
+   • Update callback handler
+   • Add retry UI
+
+> Note: rollout starts Monday. Coordinate with #release and @riley.
+
+_Code sample_
+
+```
+// `+++` inside code should NOT create a details block.
+export function normalizeEmail(s: string): string {
+  return s.trim().toLowerCase();
+}
+```
+
+_Cases_
+
+```
+Case | Expected
+Valid email | 200
+Bad token | 401
+```
+
+<https://example.com/flow.png|diagram>
+
+HTML allowed tags: &lt;u&gt;Important&lt;/u&gt; and &lt;sup&gt;2&lt;/sup&gt;.&lt;br&gt;
+HTML disallowed inline in a paragraph (to exercise Linear's allowlist): &lt;video src="/noop"&gt;&lt;/video&gt;
+
+Footnote ref^[1].
+
+Footnotes:
+[1] This is a footnote with a Slack user <@U0FOOT> and a Slack link <https://ex.com|ex>.
+
+````
+
+</details>
+
+<details>
+<summary><strong>Warnings emitted (example)</strong></summary>
+
+```
+
+Slack: flattened list depth > 2
+Slack: table downgraded to code block
+Slack: images emitted as links
+Slack: HTML stripped
+Slack: footnotes converted to inline caret + appended refs
+Linear: HTML stripped
+Linear: HTML stripped
+
+```
+
+You can silence or redirect warnings; see [FormatOptions](#formatoptions-v1) below.
+
+</details>
+
+## Concepts
+
+- Parse once → canonical mdast → render per‑target.
+- Predictable degradations with explicit warnings (e.g., Slack tables → code blocks; math → code; images → links; Linear strips disallowed HTML).
+- Idempotent output per target; code/inline code is never changed by autolinks or formatting.
+- Autolinks and mentions are deterministic and local by default; optional env‑backed defaults provider hydrates Slack users/channels and Linear org/team/user data when tokens are present.
+
+## API
+
+### `formatFor`
+
+- `formatFor.github(input, options?)`
+- `formatFor.slack(input, options?)`
+- `formatFor.linear(input, options?)`
+
+Each returns a `Promise<string>` with the formatted value for that target.
+
+### Factory and env defaults
+
+```ts
+import { createFormatFor, createEnvDefaultsProvider } from 'format-for';
+
+const ff = createFormatFor({
+  defaults: createEnvDefaultsProvider({
+    // optional: override token/TTL/namespace; env fallbacks used by default
+    // slack: { token: 'xoxb-…', ttlMs: 10 * 60_000 },
+    // linear: { apiKey: 'lin_api_…', ttlMs: 60 * 60_000 },
+  }),
+});
+
+const out = await ff.github('Ref ENG-123 and say hi to @riley');
+```
+
+### FormatOptions (v1)
+
+```ts
+type FormatOptions = {
+  maps?: {
+    slack?: {
+      users?: Record<string, { id: string; label?: string }>;
+      channels?: Record<string, { id: string; label?: string }>;
+    };
+    linear?: { users?: Record<string, { url: string; label?: string }> };
+  };
+  autolinks?: Partial<
+    Record<
+      'github' | 'slack' | 'linear',
+      Array<{
+        pattern: RegExp;
+        urlTemplate: string;
+        labelTemplate?: string;
+      }>
+    >
+  >;
+  warnings?: {
+    mode?: 'console' | 'silent';
+    onWarn?: (message: string) => void;
+  };
+  target?: {
+    slack?: {
+      lists?: { maxDepth?: number }; // default: 2
+      images?: { style?: 'link' | 'url'; emptyAltLabel?: string }; // defaults: 'link' / 'image'
+    };
+    github?: { breaks?: 'two-spaces' | 'backslash' }; // default: 'two-spaces'
+    // Linear options are intentionally not exposed in v1
+  };
+};
+```
+
+Notes
+
+- Autolinks are normalized to global regex; when provider + caller rules collide, the caller wins.
+- Linear’s HTML allowlist is fixed internally: `details`, `summary`, `u`, `sub`, `sup`, `br`.
+
+## Target behavior highlights
+
+- GitHub
+  - `details` nodes render as `<details><summary>…</summary>…</details>` HTML.
+  - Hard breaks use two spaces by default (configurable to backslash).
+  - Preserves task list state on bare marker lines.
+- Slack
+  - Headings become bold lines; quotes have readable spacing.
+  - Lists deeper than `maxDepth` flatten with a single warning per render.
+  - Images emit as `<url|label>` links (or bare URLs) with a warning; style is configurable.
+  - Tables → fenced code with a warning; inline/display math → code/code blocks with warnings.
+  - Footnotes become `^[n]` plus appended refs; all HTML stripped with a warning.
+- Linear
+  - `+++ Summary` → collapsible; disallowed HTML is stripped while keeping surrounding text.
+  - Slack/Linear mentions normalize to links/plain text as appropriate.
+
+## Recipes
+
+- Autolink Linear issues (multiple team keys):
+
+  ```ts
+  const rules = [
+    {
+      pattern: /\b(BOT-\d+)\b/g,
+      urlTemplate: 'https://linear.app/charlie/issue/$0',
+    },
+    {
+      pattern: /\b(ENG-\d+)\b/g,
+      urlTemplate: 'https://linear.app/charlie/issue/$0',
+    },
+  ];
+  await formatFor.github(text, {
+    autolinks: { github: rules, linear: rules, slack: rules },
+  });
+  ```
+
+- Route warnings to your logger and silence console output:
+
+  ```ts
+  await formatFor.slack(md, {
+    warnings: { mode: 'silent', onWarn: (m) => log.warn(m) },
+  });
+  ```
+
+- Preserve GitHub backslash hard breaks:
+
+  ```ts
+  await formatFor.github(md, { target: { github: { breaks: 'backslash' } } });
+  ```
+
+- Use live Slack/Linear defaults (if tokens exist):
+
+  ```ts
+  const ff = createFormatFor({ defaults: createEnvDefaultsProvider() });
+  const text = await ff.slack('See @riley in #dev');
+  ```
+
+## Warnings and safety
+
+- Slack: HTML stripped; images/tables/math/footnotes degrade with clear warnings; link labels are sanitized.
+- Linear: strict inline HTML allowlist; disallowed tags are removed and paragraphs preserved; warnings are emitted.
+- Code blocks and inline code are never altered by autolinks or formatting passes.
+
+Control warnings with `warnings.mode` and `warnings.onWarn`.
+
+## Performance and idempotency
+
+- One parse; lightweight renderers; no network calls unless you opt in via the factory.
+- Formatting is idempotent for a given target (running twice yields the same string).
+
+## Contributing
+
+Dev commands:
+
+```bash
+bun install
 bun run typecheck
 bun run lint
 bun run test
 ```
 
----
-
-## Scripts
-
-Common tasks (see `package.json` for the full list):
-
-- `build`: `bun run --bun zshy` — runs the `zshy` bundler (configured via the `"zshy"` field) to emit dual CJS/ESM bundles
-- `ci`: `bun run typecheck && bun run lint && bun run test`
-- `fix`: `eslint --fix --quiet . ; prettier --write --log-level=silent .`
-- `lint`: `eslint . && prettier --check .`
-- `test`: `vitest run --reporter=dot --coverage`
-- `test:watch`: `vitest`
-- `typecheck`: `tsc --noEmit`
-
-Usage:
-
-```bash
-bun run typecheck # TS type checks, no emit
-bun run lint      # static analysis + Prettier check
-bun run fix       # auto-fix lint + format issues
-bun run test     # unit tests with Vitest
-bun run build     # emit CJS/ESM bundles via zshy (see package.json#"zshy")
-```
-
----
-
-## Project structure
-
-```
-.
-├─ src/
-│  ├─ index.ts
-│  └─ index.test.ts
-├─ .github/workflows/
-│  └─ ci.yml
-├─ eslint.config.js
-├─ knip.ts
-├─ tsconfig.json
-├─ bun.lock
-├─ .prettierignore
-├─ package.json
-└─ README.md
-```
-
-> This project tracks the text-based `bun.lock` generated by `bun install --save-text-lock`. Run `bun install` after dependency changes to refresh it.
-
----
-
-## Development
-
-- **ESM-only**. Use explicit `.js` extensions on local imports when bundling TypeScript.
-- Keep modules small and pure; push side effects to the entry point.
-- Example pattern:
-
-```ts
-export function helloWorld(): string {
-  return 'Hello World!';
-}
-
-if (import.meta.main) {
-  console.log(helloWorld());
-}
-```
-
----
-
-## Testing
-
-- Tests use Vitest. Run with `bun run test` or `bun run test:watch`.
-- Co-locate specs beside source (e.g., `src/index.test.ts`).
-
-```ts
-import { expect, test } from 'vitest';
-import { helloWorld } from './index.js';
-
-test('helloWorld', () => {
-  expect(helloWorld()).toBe('Hello World!');
-});
-```
-
----
-
-## CI
-
-- CI runs on PRs and the `master` branch.
-- Workflow: `.github/workflows/ci.yml`
-  - `bun install --frozen-lockfile`
-  - `bun run build` to ensure `package.json` is current (via zshy)
-  - `bun run ci` (typecheck, lint, test)
-
-Badge at the top links to the current workflow run history.
-
-> Prefer `main` as your default branch? Rename it (`git branch -m master main`) and update the badge + workflow triggers.
-
----
-
-## Configuration
-
-This template avoids runtime envs by default. If you need them:
-
-1. Define a schema (e.g., Zod) and validate at startup.
-2. Document required variables here.
-
-Example:
-
-```ts
-export interface AppConfig {
-  port: number;
-}
-
-export function loadConfig(env = process.env): AppConfig {
-  const port = Number(env.PORT ?? '3000');
-  if (!Number.isFinite(port) || port <= 0) {
-    throw new Error('PORT must be a positive integer');
-  }
-  return { port };
-}
-```
-
----
-
-## Conventions
-
-- **Formatting/linting**: ESLint + Prettier (`bun run lint`, `bun run fix`)
-- **Type safety**: `bun run typecheck` locally and in CI
-- **Commits/PRs**: Keep PRs focused; include tests or rationale for behavior changes.
-
----
-
-## Keeping up to date
-
-If you enable the optional weekly “template sync” automation, shared files (e.g., `ci.yml`, `eslint.config.js`, `knip.ts`, `tsconfig.json`, `.prettierignore`) will be proposed via PR. Review and merge as needed. Project-specific code is never auto-overwritten.
-
----
-
-## Releasing (optional)
-
-If you convert this to a library and add a release process (e.g., Changesets), document it here:
-
-- Versioning strategy
-- Publishing target (npm, GitHub Releases)
-- Required tokens/permissions
-
----
+Fixtures live under `src/markdown/__tests__/__fixtures__/`. To regenerate example outputs locally, run: `bun scripts/gen-fixtures.ts`.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE) for details.
+[MIT](./LICENSE)
