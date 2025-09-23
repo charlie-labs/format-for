@@ -8,20 +8,20 @@ import { type FormatOptions } from '../types.js';
  * - Call console.warn(message) unless mode === 'silent'.
  */
 export function warn(message: string, opts?: FormatOptions['warnings']): void {
-  try {
-    if (opts?.onWarn) {
-      // Best-effort: never throw from user callback
-      try {
-        opts.onWarn(String(message));
-      } catch (_err) {
-        // swallow
-      }
+  if (opts?.onWarn) {
+    // Best-effort: never throw from user callback
+    try {
+      opts.onWarn(String(message));
+    } catch {
+      // swallow
     }
-    if (!opts || opts.mode !== 'silent') {
+  }
+  if (!opts || opts.mode !== 'silent') {
+    try {
       // eslint-disable-next-line no-console
       console.warn(String(message));
+    } catch {
+      // swallow
     }
-  } catch (_e) {
-    // Final safety: never propagate from warning path
   }
 }

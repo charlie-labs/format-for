@@ -16,7 +16,7 @@ import { warn } from '../utils/warn.js';
 
 export function renderLinear(
   ast: Root,
-  opts: { allowHtml: string[] } & Partial<FormatOptions>
+  opts: { allowHtml: string[]; warnings?: FormatOptions['warnings'] }
 ): string {
   const cloned: Root = structuredClone(ast);
 

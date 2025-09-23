@@ -66,6 +66,23 @@ function imageWarnMessage(options?: FormatOptions): string {
     : 'Slack: images emitted as links';
 }
 
+function formatSlackImage(
+  url: string | undefined,
+  alt: string | null | undefined,
+  options?: FormatOptions
+): string {
+  const style = options?.target?.slack?.images?.style ?? 'link';
+  const emptyAltLabel =
+    options?.target?.slack?.images?.emptyAltLabel ?? 'image';
+  const altText = (alt ?? '').trim();
+  const labelRaw = altText.length > 0 ? altText : emptyAltLabel;
+  if (style === 'url') {
+    return String(url ?? '');
+  }
+  const label = escapeSlackLabel(labelRaw);
+  return `<${url ?? ''}|${label}>`;
+}
+
 function renderNodes(
   nodes: AnyChild[],
   out: string[],
@@ -148,17 +165,7 @@ function renderNodes(
     }
     if (n.type === 'image') {
       warn(imageWarnMessage(options), options?.warnings);
-      const style = options?.target?.slack?.images?.style ?? 'link';
-      const emptyAltLabel =
-        options?.target?.slack?.images?.emptyAltLabel ?? 'image';
-      const alt = (n.alt ?? '').trim();
-      const labelRaw = alt.length > 0 ? alt : emptyAltLabel;
-      if (style === 'url') {
-        out.push(String(n.url ?? ''), '\n\n');
-      } else {
-        const label = escapeSlackLabel(labelRaw);
-        out.push(`<${n.url}|${label}>\n\n`);
-      }
+      out.push(formatSlackImage(n.url, n.alt, options), '\n\n');
       continue;
     }
     if (n.type === 'html') {
@@ -212,20 +219,10 @@ function renderInline(
       continue;
     }
     if (c.type === 'image') {
-      // Slack doesn't support inline images in mrkdwn; emit as a link instead
-      // and warn to make the downgrade visible in fixtures/tests.
+      // Slack doesn't support inline images in mrkdwn; emit as a link or URL
+      // (per options) and warn to make the downgrade visible in fixtures/tests.
       warn(imageWarnMessage(options), options?.warnings);
-      const style = options?.target?.slack?.images?.style ?? 'link';
-      const emptyAltLabel =
-        options?.target?.slack?.images?.emptyAltLabel ?? 'image';
-      const alt = (c.alt ?? '').trim();
-      const labelRaw = alt.length > 0 ? alt : emptyAltLabel;
-      if (style === 'url') {
-        s += String(c.url ?? '');
-      } else {
-        const label = escapeSlackLabel(labelRaw);
-        s += `<${c.url}|${label}>`;
-      }
+      s += formatSlackImage(c.url, c.alt, options);
       continue;
     }
     if (c.type === 'footnoteReference') {
@@ -270,7 +267,7 @@ function renderList(
   const flattened = depth + 1 > maxDepth;
   if (flattened) {
     if (!ctx.flattenedListWarned) {
-      warn('Slack: flattened list depth > 2', options?.warnings);
+      warn(`Slack: flattened list depth > ${maxDepth}`, options?.warnings);
       ctx.flattenedListWarned = true;
     }
   }

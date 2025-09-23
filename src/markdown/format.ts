@@ -32,11 +32,9 @@ export const formatFor: FormatFor = {
   async linear(input: string, options: FormatOptions = {}): Promise<string> {
     const ast = buildAst(input, options);
     return renderLinear(ast, {
-      // Caller options first (warnings/target knobs); do not allow overriding allowHtml.
-      ...options,
-      // Use a cloned copy to guarantee immutability across calls even if a future
-      // refactor accidentally mutates the array downstream.
+      // Do not allow overriding allowHtml.
       allowHtml: [...DEFAULT_LINEAR_HTML_ALLOW],
+      warnings: options.warnings,
     });
   },
 };

@@ -44,9 +44,9 @@ export function createFormatFor(opts?: {
         autolinks: eff.autolinks ?? {},
       });
       return renderLinear(ast, {
-        // Caller/provider options first; do not allow overriding allowHtml.
-        ...eff,
+        // Do not allow overriding allowHtml; pass only supported knobs to renderer.
         allowHtml: [...DEFAULT_LINEAR_HTML_ALLOW],
+        warnings: eff.warnings,
       });
     },
   } satisfies FormatFor;
@@ -63,12 +63,12 @@ async function mergeEffective(
   const maps = mergeMaps(snap.maps, options.maps);
   const autolinks = mergeAutolinks(snap.autolinks, options.autolinks);
 
-  // Preserve caller-provided warnings/target knobs verbatim
+  // Preserve all caller-provided knobs; override with merged maps/autolinks so
+  // future `FormatOptions` fields flow through without factory changes.
   const merged: FormatOptions = {
+    ...options,
     maps,
     autolinks,
-    warnings: options.warnings,
-    target: options.target,
   };
   return merged;
 }
