@@ -1,5 +1,4 @@
-import { formatFor as base } from './format.js';
-import { parseToCanonicalMdast } from './parse.js';
+import { buildAst, type CanonicalMdast } from './build-ast.js';
 import { renderGithub } from './renderers/github.js';
 import { renderLinear } from './renderers/linear.js';
 import { renderSlack } from './renderers/slack.js';
@@ -12,107 +11,151 @@ import {
   type FormatTarget,
   type MentionMaps,
 } from './types.js';
+// (no extra utils needed here)
 
-export function createFormatFor(opts?: {
-  defaults?: DefaultsProvider | false;
-}): FormatFor {
-  const provider = opts && opts.defaults ? opts.defaults : undefined;
+// buildAst shared in ./build-ast
 
-  if (!provider) return base; // Pure behavior (no implicit defaults)
+function concatDedupeAutolinks(
+  a: AutoLinkRule[] | undefined,
+  b: AutoLinkRule[] | undefined
+): AutoLinkRule[] {
+  // Dedup by normalized pattern (source + canonical flags) and prefer `b` (caller)
+  // over `a` (provider) when patterns collide. We also normalize patterns to
+  // include the 'g' flag and use canonical flag order for stable keys.
+  const byPattern = new Map<string, AutoLinkRule>();
+  const normalize = (r: AutoLinkRule): AutoLinkRule => {
+    const base = r.pattern;
+    const norm = base.global ? base : new RegExp(base.source, base.flags + 'g');
+    return norm === base ? r : { ...r, pattern: norm };
+  };
 
+  for (const r of a ?? []) {
+    const n = normalize(r);
+    const key = `${n.pattern.source}|${n.pattern.flags}`;
+    if (!byPattern.has(key)) byPattern.set(key, n);
+  }
+  for (const r of b ?? []) {
+    const n = normalize(r);
+    const key = `${n.pattern.source}|${n.pattern.flags}`;
+    byPattern.set(key, n);
+  }
+  return [...byPattern.values()];
+}
+
+function mergeMentionMaps(a?: MentionMaps, b?: MentionMaps): MentionMaps {
+  // Caller (b) overrides provider (a)
+  const slackUsers = {
+    ...(a?.slack?.users ?? {}),
+    ...(b?.slack?.users ?? {}),
+  };
+  const slackChannels = {
+    ...(a?.slack?.channels ?? {}),
+    ...(b?.slack?.channels ?? {}),
+  };
+  const linearUsers = {
+    ...(a?.linear?.users ?? {}),
+    ...(b?.linear?.users ?? {}),
+  };
+  const out: MentionMaps = {};
+  if (
+    Object.keys(slackUsers).length > 0 ||
+    Object.keys(slackChannels).length > 0
+  ) {
+    out.slack = {};
+    if (Object.keys(slackUsers).length > 0) out.slack.users = slackUsers;
+    if (Object.keys(slackChannels).length > 0) {
+      out.slack.channels = slackChannels;
+    }
+  }
+  if (Object.keys(linearUsers).length > 0) {
+    out.linear = { users: linearUsers };
+  }
+  return out;
+}
+
+function mergeWithDefaults(
+  defaults: {
+    maps?: MentionMaps;
+    autolinks?: Partial<Record<FormatTarget, AutoLinkRule[]>>;
+  },
+  options: FormatOptions | undefined
+): FormatOptions {
+  const maps = mergeMentionMaps(defaults.maps, options?.maps);
+  const autolinks: Partial<Record<FormatTarget, AutoLinkRule[]>> = {};
+  for (const k of ['github', 'slack', 'linear'] as const) {
+    const merged = concatDedupeAutolinks(
+      defaults.autolinks?.[k],
+      options?.autolinks?.[k]
+    );
+    if (merged.length > 0) autolinks[k] = merged;
+  }
+  // Preserve any other caller-supplied knobs (e.g., warnings) while
+  // overriding the merged fields.
+  // Include provider defaults (future-compatible) then let caller options override,
+  // and finally override with our merged fields.
   return {
+    ...defaults,
+    ...(options ?? {}),
+    maps,
+    autolinks,
+  } satisfies FormatOptions;
+}
+
+async function ensureAndBuild(
+  input: string,
+  target: FormatTarget,
+  provider: DefaultsProvider | undefined,
+  options: FormatOptions | undefined
+): Promise<{ ast: CanonicalMdast; effective: FormatOptions }> {
+  let effective: FormatOptions = options ?? {};
+  if (provider) {
+    await provider.ensureFor(target);
+    effective = mergeWithDefaults(provider.snapshot(), options);
+  }
+  const ast = buildAst(input, effective, target);
+  return { ast, effective };
+}
+
+export function createFormatFor(
+  opts: {
+    /** Inject a DefaultsProvider to enable env/network-backed defaults; set `false` to force purity. */
+    defaults?: DefaultsProvider | false;
+  } = {}
+): FormatFor {
+  const provider = opts.defaults === false ? undefined : opts.defaults;
+
+  const api: FormatFor = {
     async github(input: string, options: FormatOptions = {}): Promise<string> {
-      const eff = await mergeEffective('github', provider, options);
-      const ast = parseToCanonicalMdast(input, {
-        maps: eff.maps ?? {},
-        autolinks: eff.autolinks ?? {},
-      });
-      return renderGithub(ast, eff);
+      const { ast, effective } = await ensureAndBuild(
+        input,
+        'github',
+        provider,
+        options
+      );
+      return renderGithub(ast, effective);
     },
     async slack(input: string, options: FormatOptions = {}): Promise<string> {
-      const eff = await mergeEffective('slack', provider, options);
-      const ast = parseToCanonicalMdast(input, {
-        maps: eff.maps ?? {},
-        autolinks: eff.autolinks ?? {},
-      });
-      return renderSlack(ast, eff);
+      const { ast, effective } = await ensureAndBuild(
+        input,
+        'slack',
+        provider,
+        options
+      );
+      return renderSlack(ast, effective);
     },
     async linear(input: string, options: FormatOptions = {}): Promise<string> {
-      const eff = await mergeEffective('linear', provider, options);
-      const ast = parseToCanonicalMdast(input, {
-        maps: eff.maps ?? {},
-        autolinks: eff.autolinks ?? {},
-      });
+      const { ast, effective } = await ensureAndBuild(
+        input,
+        'linear',
+        provider,
+        options
+      );
       return renderLinear(ast, {
-        // Do not allow overriding allowHtml; pass only supported knobs to renderer.
         allowHtml: [...DEFAULT_LINEAR_HTML_ALLOW],
-        warnings: eff.warnings,
+        warnings: effective.warnings,
       });
     },
   } satisfies FormatFor;
-}
 
-async function mergeEffective(
-  target: FormatTarget,
-  provider: DefaultsProvider,
-  options: FormatOptions
-): Promise<FormatOptions> {
-  await provider.ensureFor(target);
-  const snap = provider.snapshot() ?? {};
-
-  const maps = mergeMaps(snap.maps, options.maps);
-  const autolinks = mergeAutolinks(snap.autolinks, options.autolinks);
-
-  // Preserve all caller-provided knobs; override with merged maps/autolinks so
-  // future `FormatOptions` fields flow through without factory changes.
-  const merged: FormatOptions = {
-    ...options,
-    maps,
-    autolinks,
-  };
-  return merged;
-}
-
-function mergeMaps(a?: MentionMaps, b?: MentionMaps): MentionMaps | undefined {
-  if (!a && !b) return undefined;
-  return {
-    slack: {
-      ...(a?.slack ?? {}),
-      ...(b?.slack ?? {}),
-      users: { ...(a?.slack?.users ?? {}), ...(b?.slack?.users ?? {}) },
-      channels: {
-        ...(a?.slack?.channels ?? {}),
-        ...(b?.slack?.channels ?? {}),
-      },
-    },
-    linear: {
-      ...(a?.linear ?? {}),
-      ...(b?.linear ?? {}),
-      users: { ...(a?.linear?.users ?? {}), ...(b?.linear?.users ?? {}) },
-    },
-  } satisfies MentionMaps;
-}
-
-function mergeAutolinks(
-  a?: { linear?: AutoLinkRule[] },
-  b?: { linear?: AutoLinkRule[] }
-): { linear?: AutoLinkRule[] } | undefined {
-  const pa = a?.linear ?? [];
-  const pb = b?.linear ?? [];
-  if (pa.length === 0 && pb.length === 0) return undefined;
-  const out: AutoLinkRule[] = [];
-  const seen = new Set<string>();
-  const push = (r: AutoLinkRule) => {
-    const key = `${r.pattern.source}|${r.pattern.flags}|${r.urlTemplate}|${
-      r.labelTemplate ?? ''
-    }`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(r);
-    }
-  };
-  // Give per-call rules precedence on duplicates to mirror maps merge semantics.
-  for (const r of pb) push(r); // caller rules first
-  for (const r of pa) push(r); // then provider rules
-  return { linear: out };
+  return api;
 }

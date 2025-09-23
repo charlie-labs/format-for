@@ -38,5 +38,16 @@ jobs:
           # Clean up build artifacts to avoid affecting subsequent lint steps
           rm -rf dist .tshy .zshy
 
-      - name: Run CI
-        run: bun run ci
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Test
+        env:
+          # Expose read-only API tokens to the test step only so env-gated
+          # integration tests (Vitest) can execute in CI.
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        run: bun run test

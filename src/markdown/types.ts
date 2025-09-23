@@ -10,7 +10,9 @@ export type FormatTarget = 'github' | 'slack' | 'linear';
 
 /**
  * Rule to autolink patterns (like GitHub autolinks).
- * Use RegExp with global flag; $0..$n allowed in templates.
+ * The library will normalize provided RegExp patterns to be global
+ * (add the 'g' flag when missing) to avoid lastIndex bleed and to make
+ * replacement passes reliable. $0..$n are allowed in templates.
  */
 export interface AutoLinkRule {
   pattern: RegExp;
@@ -48,8 +50,14 @@ export type LinearAllowedHtmlTag = (typeof DEFAULT_LINEAR_HTML_ALLOW)[number];
 /** Options for formatting. All synchronous. */
 export interface FormatOptions {
   maps?: MentionMaps;
-  /** Autolink rules for Linear (and optionally others in future). */
-  autolinks?: { linear?: AutoLinkRule[] };
+  /**
+   * Autolink rules grouped by target. During provider/caller merge, rules are combined per‑target.
+   * At parse time, rules are flattened with target‑preferred ordering (the current
+   * target’s rules are considered first) so that when patterns collide, the
+   * current target’s rule wins. Keys primarily exist to control merge/precedence
+   * semantics; callers may still declare rules under any key.
+   */
+  autolinks?: Partial<Record<FormatTarget, AutoLinkRule[]>>;
 
   // Centralized renderer warnings behavior (v1 surface)
   warnings?: {
@@ -93,12 +101,14 @@ export interface FormatFor {
   linear: FormatFn;
 }
 
-/**
- * Provider for injectable defaults (env/network-backed) without globals.
- * Implementations can lazily hydrate on first use per target.
- */
+// Optional runtime defaults provider injected via a factory. This lets apps
+// plug in environment/network-backed loaders without hard-wiring any globals
+// into the library. Providers may cache internally; callers control tenancy
+// by choosing when/how they construct the formatter.
 export type DefaultsProvider = {
+  /** Ensure defaults needed for a specific target are available (may fetch/cache). */
   ensureFor(target: FormatTarget): Promise<void>;
+  /** Return a readonly snapshot of defaults to merge into per-call options. */
   snapshot(): Readonly<Partial<Pick<FormatOptions, 'maps' | 'autolinks'>>>;
 };
 

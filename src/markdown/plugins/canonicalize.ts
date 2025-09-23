@@ -13,6 +13,7 @@ import { CONTINUE, visit } from 'unist-util-visit';
 import {
   type AutoLinkRule,
   type DetailsNode,
+  type FormatTarget,
   type MentionMaps,
   type MentionNode,
 } from '../types.js';
@@ -32,13 +33,34 @@ import {
 export type CanonicalizeOptions = {
   maps?: MentionMaps;
   autolinks?: AutoLinkRule[];
+  /**
+   * Target-aware tweaks (optional). When provided, bare "@user" resolution will:
+   *  - on Slack: use Slack `maps.slack.users` to emit a real mention (<@U…>)
+   *  - on GitHub/Linear: use Linear `maps.linear.users` to emit a link to the profile
+   * If omitted, behavior matches legacy: only Linear mapping is attempted.
+   */
+  target?: FormatTarget;
 };
 
 export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   opts?: CanonicalizeOptions
 ) => {
   const maps = opts?.maps ?? {};
+  const target: FormatTarget | undefined = opts?.target;
   const linearUsers = maps.linear?.users ?? {};
+  const slackUsers = maps.slack?.users ?? {};
+
+  // Build case-insensitive lookup tables once per tree run
+  const linearUsersLc: Record<string, { url: string; label?: string }> = {};
+  for (const k of Object.keys(linearUsers)) {
+    const v = linearUsers[k];
+    if (v) linearUsersLc[k.toLowerCase()] = v;
+  }
+  const slackUsersLc: Record<string, { id: string; label?: string }> = {};
+  for (const k of Object.keys(slackUsers)) {
+    const v = slackUsers[k];
+    if (v) slackUsersLc[k.toLowerCase()] = v;
+  }
   const autolinks = opts?.autolinks ?? [];
 
   return (root: Root) => {
@@ -212,18 +234,33 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
               children: [{ type: 'text', value: label }],
             });
           } else if (m[9]) {
-            // @user (Linear mapping)
+            // @user (target-aware mapping; case-insensitive)
             const key = m[9];
-            const hit = linearUsers[key];
-            if (hit?.url) {
-              fragments.push({
-                type: 'link',
-                url: hit.url,
-                title: null,
-                children: [{ type: 'text', value: hit.label ?? `@${key}` }],
-              });
+            const keyLc = key.toLowerCase();
+            if (target === 'slack') {
+              const sHit = slackUsersLc[keyLc];
+              if (sHit?.id) {
+                const mention: MentionNode = {
+                  type: 'mention',
+                  data: { subtype: 'user', id: sHit.id },
+                  children: [],
+                };
+                fragments.push(mention);
+              } else {
+                fragments.push({ type: 'text', value: whole });
+              }
             } else {
-              fragments.push({ type: 'text', value: whole });
+              const lHit = linearUsersLc[keyLc];
+              if (lHit?.url) {
+                fragments.push({
+                  type: 'link',
+                  url: lHit.url,
+                  title: null,
+                  children: [{ type: 'text', value: lHit.label ?? `@${key}` }],
+                });
+              } else {
+                fragments.push({ type: 'text', value: whole });
+              }
             }
           }
           lastIndex = re.lastIndex;
@@ -332,10 +369,13 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   };
 };
 
+function hasTypeField(v: unknown): v is { type: unknown } {
+  return typeof v === 'object' && v !== null && 'type' in v;
+}
+
 function isListItemNode(node: unknown): node is ListItem {
-  if (typeof node !== 'object' || node == null) return false;
-  const t = (node as { type?: unknown }).type;
-  return t === 'listItem';
+  if (!hasTypeField(node)) return false;
+  return typeof node.type === 'string' && node.type === 'listItem';
 }
 
 function canonicalizeDetailsInParent(parent: Parent): void {

@@ -5,7 +5,12 @@ import { unified } from 'unified';
 
 import { remarkCanonicalizeMixed } from './plugins/canonicalize.js';
 import { remarkFixLiteralNewlines } from './plugins/fixLiteralNewlines.js';
-import { assertIsRoot, type AutoLinkRule, type MentionMaps } from './types.js';
+import {
+  assertIsRoot,
+  type AutoLinkRule,
+  type FormatTarget,
+  type MentionMaps,
+} from './types.js';
 
 /**
  * Parse mixed Slack/Linear/GFM to a canonical mdast Root.
@@ -14,14 +19,19 @@ import { assertIsRoot, type AutoLinkRule, type MentionMaps } from './types.js';
  */
 export function parseToCanonicalMdast(
   input: string,
-  opts: { maps?: MentionMaps; autolinks?: { linear?: AutoLinkRule[] } } = {}
+  opts: {
+    maps?: MentionMaps;
+    autolinks?: AutoLinkRule[];
+    target?: FormatTarget;
+  } = {}
 ): Root {
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkCanonicalizeMixed, {
       maps: opts.maps ?? {},
-      autolinks: opts.autolinks?.linear ?? [],
+      autolinks: opts.autolinks ?? [],
+      target: opts.target,
     })
     // Replace literal "\n" with `break` nodes (hard line breaks), skipping code.
     .use(remarkFixLiteralNewlines);
