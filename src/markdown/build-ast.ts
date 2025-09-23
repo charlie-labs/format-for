@@ -17,5 +17,6 @@ export function buildAst(
   return parseToCanonicalMdast(input, {
     maps: options?.maps ?? {},
     autolinks: autos,
+    target,
   });
 }

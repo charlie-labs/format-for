@@ -128,6 +128,10 @@ describe('env defaults provider (mocked APIs): no-network autoload', () => {
       expect(ghIssue).toContain(
         '[BOT-123](https://linear.app/acme/issue/BOT-123)'
       );
+
+      // Slack: @riley should become a real Slack mention when Slack users are loaded
+      const slUser = await ff.slack('Hello @riley');
+      expect(slUser).toContain('<@URILEY>');
     } finally {
       // Restore fetch
       globalThis.fetch = prevFetch as any;
