@@ -1,4 +1,4 @@
-import { type Html, type Parent, type Root } from 'mdast';
+import { type Html, type ListItem, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
 import remarkStringify, {
   type Options as RemarkStringifyOptions,
@@ -58,13 +58,13 @@ export function renderGithub(ast: Root): string {
     }
   );
 
-  return (
-    unified()
-      // Register GFM extensions before stringify so the compiler picks them up
-      .use(remarkGfm)
-      .use(remarkStringify, stringifyOptions)
-      .stringify(cloned)
-  );
+  const out = unified()
+    // Register GFM extensions before stringify so the compiler picks them up
+    .use(remarkGfm)
+    .use(remarkStringify, stringifyOptions)
+    .stringify(cloned);
+
+  return fixEmptyTaskItems(cloned, out);
 }
 
 function convertNestedDetails(children: Root['children']): void {
@@ -113,3 +113,23 @@ const stringifyOptions = {
     },
   },
 } satisfies RemarkStringifyOptions;
+
+function fixEmptyTaskItems(ast: Root, markdown: string): string {
+  // Collect empty task-items (checked boolean with no children) in document order
+  const empties: boolean[] = [];
+  visit(ast, 'listItem', (n: ListItem) => {
+    if (typeof n.checked === 'boolean' && (n.children?.length ?? 0) === 0) {
+      empties.push(n.checked);
+    }
+  });
+  if (empties.length === 0) return markdown;
+  const lines = markdown.split('\n');
+  let i = 0;
+  for (let idx = 0; idx < lines.length && i < empties.length; idx++) {
+    if (lines[idx] === '-') {
+      lines[idx] = empties[i] ? '- [x]' : '- [ ]';
+      i++;
+    }
+  }
+  return lines.join('\n');
+}
