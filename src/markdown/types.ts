@@ -73,6 +73,17 @@ export interface FormatFor {
   linear: FormatFn;
 }
 
+// Optional runtime defaults provider injected via a factory. This lets apps
+// plug in environment/network-backed loaders without hard-wiring any globals
+// into the library. Providers may cache internally; callers control tenancy
+// by choosing when/how they construct the formatter.
+export type DefaultsProvider = {
+  /** Ensure defaults needed for a specific target are available (may fetch/cache). */
+  ensureFor(target: FormatTarget): Promise<void>;
+  /** Return a readonly snapshot of defaults to merge into per-call options. */
+  snapshot(): Readonly<Partial<Pick<FormatOptions, 'maps' | 'autolinks'>>>;
+};
+
 // ——— mdast custom nodes (first‑class, typed) ———
 
 // Mention node used by the canonicalizer (Slack-style mentions, plus specials)
