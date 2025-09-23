@@ -1,11 +1,5 @@
 /* eslint-disable no-console */
-import {
-  type Html,
-  type ListItem,
-  type Paragraph,
-  type Parent,
-  type Root,
-} from 'mdast';
+import { type Html, type Paragraph, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
 import remarkStringify, {
   type Options as StringifyOptions,
@@ -14,6 +8,7 @@ import { unified } from 'unified';
 import { SKIP, visit } from 'unist-util-visit';
 
 import { type DetailsNode, type MentionNode } from '../types.js';
+import { fixEmptyTaskItems } from '../utils/tasklist-utils.js';
 
 export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
   const cloned: Root = structuredClone(ast);
@@ -232,21 +227,4 @@ function closingTagName(s: string): string | null {
   return name ? name.toLowerCase() : null;
 }
 
-function fixEmptyTaskItems(ast: Root, markdown: string): string {
-  const empties: boolean[] = [];
-  visit(ast, 'listItem', (n: ListItem) => {
-    if (typeof n.checked === 'boolean' && (n.children?.length ?? 0) === 0) {
-      empties.push(n.checked);
-    }
-  });
-  if (empties.length === 0) return markdown;
-  const lines = markdown.split('\n');
-  let i = 0;
-  for (let idx = 0; idx < lines.length && i < empties.length; idx++) {
-    if (lines[idx] === '-') {
-      lines[idx] = empties[i] ? '- [x]' : '- [ ]';
-      i++;
-    }
-  }
-  return lines.join('\n');
-}
+// shared util imported
