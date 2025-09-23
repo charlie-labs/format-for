@@ -71,8 +71,8 @@ jobs:
 
       - name: Publish (npm)
         id: publish
-        # Only publish when a new version is pending AND an npm token is configured
-        if: ${{ steps.npm_version.outputs.exists == 'false' && secrets.NPM_TOKEN != '' }}
+        # Only publish when a new version is pending
+        if: ${{ steps.npm_version.outputs.exists == 'false' }}
         # Pin to the commit SHA for JS-DevTools/npm-publish@v4
         uses: JS-DevTools/npm-publish@ad693561f8a5b5d4c76f14407da60aa15cb10f90
         with:
