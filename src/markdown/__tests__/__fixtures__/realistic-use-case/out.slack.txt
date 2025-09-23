@@ -45,7 +45,7 @@ Bad token | 401
 HTML allowed tags: &lt;u&gt;Important&lt;/u&gt; and &lt;sup&gt;2&lt;/sup&gt;.&lt;br&gt;
 HTML disallowed inline in a paragraph (to exercise Linear's allowlist): &lt;video src="/noop"&gt;&lt;/video&gt;
 
-Footnote ref.
+Footnote ref^[1].
 
-This is a footnote with a Slack user <@U0FOOT> and a Slack link <https://ex.com|ex>.
-
+Footnotes:
+[1] This is a footnote with a Slack user <@U0FOOT> and a Slack link <https://ex.com|ex>.

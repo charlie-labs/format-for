@@ -2,3 +2,4 @@ Slack: flattened list depth > 2
 Slack: table downgraded to code block
 Slack: images emitted as links
 Slack: HTML stripped
+Slack: footnotes converted to inline caret + appended refs
