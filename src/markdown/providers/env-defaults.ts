@@ -205,7 +205,10 @@ export function createEnvDefaultsProvider(cfg?: {
     if (Object.keys(maps).length > 0) {
       out.maps = maps;
     }
-    if (autolinks.linear && autolinks.linear.length > 0) {
+    const hasAnyAutolinks = Object.values(autolinks).some(
+      (arr): arr is AutoLinkRule[] => Array.isArray(arr) && arr.length > 0
+    );
+    if (hasAnyAutolinks) {
       out.autolinks = autolinks;
     }
     return out;
