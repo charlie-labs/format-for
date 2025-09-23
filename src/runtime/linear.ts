@@ -73,8 +73,17 @@ export async function loadLinearIndex(token: string): Promise<LinearBits> {
     afterTeams = pi?.hasNextPage ? String(pi.endCursor ?? '') : undefined;
   } while (afterTeams);
 
+  // Without an org slug we cannot build valid profile URLs. Skip the users
+  // pass entirely to avoid unnecessary API calls and return an empty users map.
+  if (!orgSlug) {
+    return { orgSlug, teamKeys, users: {} };
+  }
+
   // Fetch all users; derive a handle from email local-part when available,
   // otherwise synthesize from displayName/name by lowercasing and stripping spaces.
+  // NOTE: We require a valid org slug to construct profile URLs. When it's
+  // not available, we skip adding user entries to avoid emitting invalid links
+  // (aligns with PR review r2372277520).
   const users: Record<string, { url: string; label?: string }> = {};
   let afterUsers: string | undefined;
   do {
@@ -107,10 +116,7 @@ export async function loadLinearIndex(token: string): Promise<LinearBits> {
       const by = emailLocal || fromName;
       if (!by) continue;
       const label = String(u.displayName ?? u.name ?? by);
-      const slug = orgSlug;
-      const url = slug
-        ? `https://linear.app/${slug}/profiles/${by}`
-        : `https://linear.app/profiles/${by}`;
+      const url = `https://linear.app/${orgSlug}/profiles/${by}`;
       users[by] = { url, label };
     }
     const pi = json?.data?.users?.pageInfo;
