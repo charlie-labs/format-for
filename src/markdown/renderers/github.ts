@@ -7,6 +7,7 @@ import { unified } from 'unified';
 import { SKIP, visit } from 'unist-util-visit';
 
 import { type DetailsNode, type MentionNode } from '../types.js';
+import { fixEmptyTaskItems } from '../utils/tasklist-utils.js';
 
 export function renderGithub(ast: Root): string {
   const cloned: Root = structuredClone(ast);
@@ -58,13 +59,13 @@ export function renderGithub(ast: Root): string {
     }
   );
 
-  return (
-    unified()
-      // Register GFM extensions before stringify so the compiler picks them up
-      .use(remarkGfm)
-      .use(remarkStringify, stringifyOptions)
-      .stringify(cloned)
-  );
+  const out = unified()
+    // Register GFM extensions before stringify so the compiler picks them up
+    .use(remarkGfm)
+    .use(remarkStringify, stringifyOptions)
+    .stringify(cloned);
+
+  return fixEmptyTaskItems(cloned, out);
 }
 
 function convertNestedDetails(children: Root['children']): void {

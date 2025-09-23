@@ -8,6 +8,7 @@ import { unified } from 'unified';
 import { SKIP, visit } from 'unist-util-visit';
 
 import { type DetailsNode, type MentionNode } from '../types.js';
+import { fixEmptyTaskItems } from '../utils/tasklist-utils.js';
 
 export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
   const cloned: Root = structuredClone(ast);
@@ -171,10 +172,12 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     },
   };
 
-  return unified()
+  const out = unified()
     .use(remarkStringify, stringifyOpts)
     .use(remarkGfm)
     .stringify(cloned);
+
+  return fixEmptyTaskItems(cloned, out);
 }
 
 function isAllowedHtml(value: string, allow: string[]): boolean {
@@ -223,3 +226,5 @@ function closingTagName(s: string): string | null {
   const name = m && m[1] ? m[1] : null;
   return name ? name.toLowerCase() : null;
 }
+
+// shared util imported
