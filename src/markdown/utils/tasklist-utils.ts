@@ -9,12 +9,14 @@ import { visit } from 'unist-util-visit';
 export function fixEmptyTaskItems(ast: Root, markdown: string): string {
   const empties: boolean[] = [];
   visit(ast, 'listItem', (n: ListItem) => {
-    if (
-      typeof n.checked === 'boolean' &&
-      (!n.children || n.children.length === 0)
-    ) {
-      empties.push(n.checked);
-    }
+    // Consider an item "empty" when it has no non-list children. This
+    // includes cases like `- [x]\n  - child` where the marker line itself has
+    // no inline content but nested lists follow on subsequent lines.
+    if (typeof n.checked !== 'boolean') return;
+    const hasInlineContent = Array.isArray(n.children)
+      ? n.children.some((c) => c.type !== 'list')
+      : false;
+    if (!hasInlineContent) empties.push(n.checked);
   });
   if (empties.length === 0) return markdown;
 
@@ -22,33 +24,40 @@ export function fixEmptyTaskItems(ast: Root, markdown: string): string {
   let i = 0;
   let inFence = false as boolean;
   let fenceChar: '`' | '~' | null = null;
+  let fenceLen = 0 as number;
 
   for (let idx = 0; idx < lines.length && i < empties.length; idx++) {
     const line = lines[idx];
-    // Track fenced code blocks (``` or ~~~), honoring matching fence characters
-    const fence = /^(\s*)(```+|~~~+)/.exec(String(line));
+    // Track fenced code blocks (``` or ~~~), honoring blockquotes and matching
+    // fence characters so we don't rewrite inside fenced regions (quoted or not).
+    const fence = /^(\s*(?:>\s*)*)(```+|~~~+)/.exec(String(line));
     if (fence) {
       const token = String(fence[2] ?? '');
       const ch = (token[0] as '`' | '~') ?? '`';
+      const len = token.length;
       if (!inFence) {
         inFence = true;
         fenceChar = ch;
-      } else if (fenceChar === ch) {
+        fenceLen = len;
+      } else if (fenceChar === ch && len >= fenceLen) {
         inFence = false;
         fenceChar = null;
+        fenceLen = 0;
       }
       continue;
     }
     if (inFence) continue;
 
-    // Match a bare list marker (unordered '-' or ordered '1.') with optional
-    // blockquote prefixes and indentation, and no inline content.
-    const m = /^(\s*(?:>\s*)*)(?:-\s*|\d+\.\s*)$/.exec(String(line));
+    // Match a bare list marker line (unordered '-', '*', '+', or ordered '1.')
+    // with optional blockquote prefixes and indentation, and no inline content.
+    // Capture the exact token so we can preserve ordered vs unordered markers.
+    const m = /^(\s*(?:>\s*)*)((?:[-*+])|\d+\.)\s*$/.exec(String(line));
     if (!m) continue;
 
     const prefix = String(m[1] ?? '');
+    const token = String(m[2] ?? '-'); // '-' or '*' or '+' or '1.' etc.
     const marker = empties[i] ? '[x]' : '[ ]';
-    lines[idx] = `${prefix}- ${marker}`;
+    lines[idx] = `${prefix}${token} ${marker}`;
     i++;
   }
 
