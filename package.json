@@ -1,6 +1,6 @@
 {
-  "name": "format-for",
-  "version": "0.0.3",
+  "name": "@charlie-labs/format-for",
+  "version": "0.0.4",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
