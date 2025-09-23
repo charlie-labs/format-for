@@ -123,13 +123,14 @@ async function ensureAndBuild(
   target: FormatTarget,
   provider: DefaultsProvider | undefined,
   options: FormatOptions | undefined
-): Promise<CanonicalMdast> {
-  let effective: FormatOptions | undefined = options;
+): Promise<{ ast: CanonicalMdast; effective: FormatOptions }> {
+  let effective: FormatOptions = options ?? {};
   if (provider) {
     await provider.ensureFor(target);
     effective = mergeWithDefaults(provider.snapshot(), options);
   }
-  return buildAst(input, effective);
+  const ast = buildAst(input, effective);
+  return { ast, effective };
 }
 
 export function createFormatFor(
@@ -142,16 +143,34 @@ export function createFormatFor(
 
   const api: FormatFor = {
     async github(input: string, options: FormatOptions = {}): Promise<string> {
-      const ast = await ensureAndBuild(input, 'github', provider, options);
-      return renderGithub(ast);
+      const { ast, effective } = await ensureAndBuild(
+        input,
+        'github',
+        provider,
+        options
+      );
+      return renderGithub(ast, effective);
     },
     async slack(input: string, options: FormatOptions = {}): Promise<string> {
-      const ast = await ensureAndBuild(input, 'slack', provider, options);
-      return renderSlack(ast);
+      const { ast, effective } = await ensureAndBuild(
+        input,
+        'slack',
+        provider,
+        options
+      );
+      return renderSlack(ast, effective);
     },
     async linear(input: string, options: FormatOptions = {}): Promise<string> {
-      const ast = await ensureAndBuild(input, 'linear', provider, options);
-      return renderLinear(ast, { allowHtml: [...DEFAULT_LINEAR_HTML_ALLOW] });
+      const { ast, effective } = await ensureAndBuild(
+        input,
+        'linear',
+        provider,
+        options
+      );
+      return renderLinear(ast, {
+        allowHtml: [...DEFAULT_LINEAR_HTML_ALLOW],
+        warnings: effective.warnings,
+      });
     },
   } satisfies FormatFor;
 

@@ -1,6 +1,7 @@
 import {
   type Html,
   type Link,
+  type ListItem,
   type Parent,
   type PhrasingContent,
   type Root,
@@ -299,8 +300,43 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         return [CONTINUE, index + parts.length];
       });
     }
+
+    // 4) Normalize bare task markers in list items with no inline content.
+    // Remark only sets `listItem.checked` when there is content after the
+    // marker (e.g., "- [x] done"). For inputs like "- [x]" or "- [ ]" with
+    // no content, the marker is parsed as plain text ("[x]"/"[ ]") and later
+    // stringifiers escape it to "\[x]". Promote these to actual task list
+    // items so GitHub/Linear renderers emit "- [x]" / "- [ ]" as intended.
+    visit(root, 'listItem', (li) => {
+      if (!isListItemNode(li)) return;
+      // Only consider items that are not already tasks
+      if (typeof li.checked === 'boolean') return;
+      if (!Array.isArray(li.children) || li.children.length === 0) return;
+      const first = li.children[0];
+      if (!first || first.type !== 'paragraph') return;
+      // Tight match: a single text child that equals "[x]" or "[ ]" (allowing surrounding whitespace)
+      if (first.children.length === 1) {
+        const onlyChild = first.children[0];
+        if (onlyChild && onlyChild.type === 'text') {
+          const raw = String(onlyChild.value ?? '');
+          const m = /^\s*\[(x|X| )\]\s*$/.exec(raw);
+          if (m) {
+            // Mark as a task and drop the marker paragraph (no inline content)
+            const flag = String(m[1] ?? '').toLowerCase();
+            li.checked = flag === 'x';
+            li.children.splice(0, 1);
+          }
+        }
+      }
+    });
   };
 };
+
+function isListItemNode(node: unknown): node is ListItem {
+  if (typeof node !== 'object' || node == null) return false;
+  const t = (node as { type?: unknown }).type;
+  return t === 'listItem';
+}
 
 function canonicalizeDetailsInParent(parent: Parent): void {
   for (let i = 0; i < parent.children.length; i++) {

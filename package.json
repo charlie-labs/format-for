@@ -2,8 +2,7 @@
   "name": "format-for",
   "version": "0.0.0",
   "type": "module",
-  "license": "UNLICENSED",
-  "private": true,
+  "license": "MIT",
   "sideEffects": false,
   "zshy": "./src/index.ts",
   "scripts": {
@@ -28,9 +27,6 @@
     ]
   },
   "prettier": "@charlie-labs/config/prettier",
-  "np": {
-    "testScript": "ci"
-  },
   "publishConfig": {
     "access": "public"
   },
@@ -54,7 +50,6 @@
     "husky": "^9.1.7",
     "knip": "^5.64.0",
     "lint-staged": "^16.2.0",
-    "np": "^10.2.0",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",

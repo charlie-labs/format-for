@@ -51,11 +51,31 @@ export type LinearAllowedHtmlTag = (typeof DEFAULT_LINEAR_HTML_ALLOW)[number];
 export interface FormatOptions {
   maps?: MentionMaps;
   /**
-   * Autolink rules grouped by target. Rules are applied at parse time to the
-   * canonical AST (target-agnostic), so callers may place rules under any key.
-   * Merging logic treats targets independently and concatenates results.
+   * Autolink rules grouped by target. During provider/caller merge, rules are combined per-target.
+   * At parse time, all rules are flattened and applied target-agnostically to the canonical AST.
+   * This means callers can place rules under any key, but keys primarily exist to control merge semantics.
    */
   autolinks?: Partial<Record<FormatTarget, AutoLinkRule[]>>;
+
+  // Centralized renderer warnings behavior (v1 surface)
+  warnings?: {
+    /** default: 'console' */
+    mode?: 'console' | 'silent';
+    /** Always invoked with the warning message when provided. */
+    onWarn?: (message: string) => void;
+  };
+
+  // Target-scoped knobs (v1)
+  target?: {
+    slack?: {
+      lists?: { maxDepth?: number }; // default: 2
+      images?: { style?: 'link' | 'url'; emptyAltLabel?: string }; // default: 'link' + 'image'
+    };
+    github?: {
+      breaks?: 'two-spaces' | 'backslash'; // default: 'two-spaces'
+    };
+    // NOTE(vNext): Linear options are intentionally not exposed in v1
+  };
   // Note: Linear's HTML allowlist is intentionally NOT configurable by callers.
 }
 

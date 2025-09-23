@@ -40,18 +40,18 @@ function buildAst(
 export const formatFor: FormatFor = {
   async github(input: string, options: FormatOptions = {}): Promise<string> {
     const ast = buildAst(input, options);
-    return renderGithub(ast);
+    return renderGithub(ast, options);
   },
   async slack(input: string, options: FormatOptions = {}): Promise<string> {
     const ast = buildAst(input, options);
-    return renderSlack(ast);
+    return renderSlack(ast, options);
   },
   async linear(input: string, options: FormatOptions = {}): Promise<string> {
     const ast = buildAst(input, options);
     return renderLinear(ast, {
-      // Use a cloned copy to guarantee immutability across calls even if a future
-      // refactor accidentally mutates the array downstream.
+      // Do not allow overriding allowHtml.
       allowHtml: [...DEFAULT_LINEAR_HTML_ALLOW],
+      warnings: options.warnings,
     });
   },
 };
