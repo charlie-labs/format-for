@@ -43,7 +43,7 @@
     "unist-util-visit-parents": "^6.0.1"
   },
   "devDependencies": {
-    "@charlie-labs/config": "^0.0.14",
+    "@charlie-labs/config": "^0.0.15",
     "@types/bun": "^1.2.22",
     "@types/mdast": "^4.0.4",
     "@types/unist": "^3.0.3",
