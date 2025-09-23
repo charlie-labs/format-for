@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { type Html, type Paragraph, type Parent, type Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
 import remarkStringify, {
@@ -7,10 +6,18 @@ import remarkStringify, {
 import { unified } from 'unified';
 import { SKIP, visit } from 'unist-util-visit';
 
-import { type DetailsNode, type MentionNode } from '../types.js';
+import {
+  type DetailsNode,
+  type FormatOptions,
+  type MentionNode,
+} from '../types.js';
 import { fixEmptyTaskItems } from '../utils/tasklist-utils.js';
+import { warn } from '../utils/warn.js';
 
-export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
+export function renderLinear(
+  ast: Root,
+  opts: { allowHtml: string[] } & Partial<FormatOptions>
+): string {
   const cloned: Root = structuredClone(ast);
 
   // Convert custom 'mention' nodes to plain text (Linear has no Slack mentions)
@@ -101,7 +108,7 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
       }
       // Otherwise, if disallowed (e.g., top-level html with disallowed tags), drop it.
       if (!isAllowedHtml(v, opts.allowHtml)) {
-        console.warn('Linear: HTML stripped');
+        warn('Linear: HTML stripped', opts.warnings);
 
         // If we're inside a paragraph and the previous sibling is text, we may
         // need to trim back to the last newline — but only when the stripped

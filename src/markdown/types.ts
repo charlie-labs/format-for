@@ -50,6 +50,26 @@ export interface FormatOptions {
   maps?: MentionMaps;
   /** Autolink rules for Linear (and optionally others in future). */
   autolinks?: { linear?: AutoLinkRule[] };
+
+  // Centralized renderer warnings behavior (v1 surface)
+  warnings?: {
+    /** default: 'console' */
+    mode?: 'console' | 'silent';
+    /** Always invoked with the warning message when provided. */
+    onWarn?: (message: string) => void;
+  };
+
+  // Target-scoped knobs (v1)
+  target?: {
+    slack?: {
+      lists?: { maxDepth?: number }; // default: 2
+      images?: { style?: 'link' | 'url'; emptyAltLabel?: string }; // default: 'link' + 'image'
+    };
+    github?: {
+      breaks?: 'two-spaces' | 'backslash'; // default: 'two-spaces'
+    };
+    // NOTE(vNext): Linear options are intentionally not exposed in v1
+  };
   // Note: Linear's HTML allowlist is intentionally NOT configurable by callers.
 }
 
@@ -72,6 +92,15 @@ export interface FormatFor {
   slack: FormatFn;
   linear: FormatFn;
 }
+
+/**
+ * Provider for injectable defaults (env/network-backed) without globals.
+ * Implementations can lazily hydrate on first use per target.
+ */
+export type DefaultsProvider = {
+  ensureFor(target: FormatTarget): Promise<void>;
+  snapshot(): Readonly<Partial<Pick<FormatOptions, 'maps' | 'autolinks'>>>;
+};
 
 // ——— mdast custom nodes (first‑class, typed) ———
 

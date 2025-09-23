@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import {
   type BlockContent,
   type DefinitionContent,
@@ -25,13 +24,16 @@ interface SlackRenderCtx {
   footnotes?: Map<string, string>;
 }
 
-export function renderSlack(ast: Root): string {
+import { type FormatOptions } from '../types.js';
+import { warn } from '../utils/warn.js';
+
+export function renderSlack(ast: Root, options?: FormatOptions): string {
   const out: string[] = [];
   const ctx: SlackRenderCtx = {
     flattenedListWarned: false,
     footnotes: new Map<string, string>(),
   };
-  renderNodes(ast.children, out, 0, ctx);
+  renderNodes(ast.children, out, 0, ctx, options);
   // Append collected footnotes, if any
   if (ctx.footnotes && ctx.footnotes.size > 0) {
     out.push('Footnotes:\n');
@@ -57,11 +59,19 @@ function escapeSlackLabel(t: string): string {
   );
 }
 
+function imageWarnMessage(options?: FormatOptions): string {
+  const style = options?.target?.slack?.images?.style ?? 'link';
+  return style === 'url'
+    ? 'Slack: images emitted as URLs'
+    : 'Slack: images emitted as links';
+}
+
 function renderNodes(
   nodes: AnyChild[],
   out: string[],
   depth: number,
-  ctx: SlackRenderCtx
+  ctx: SlackRenderCtx,
+  options?: FormatOptions
 ): void {
   // Index-based iteration so we can look ahead at the next sibling for
   // spacing decisions (e.g., blockquote followed by paragraph).
@@ -76,23 +86,26 @@ function renderNodes(
       const m = /^\s*\$\$\s*\n([\s\S]*?)\n\s*\$\$\s*$/.exec(pText);
       if (m) {
         if (!ctx.warnedDisplayMath) {
-          console.warn('Slack: display math downgraded to code block');
+          warn(
+            'Slack: display math downgraded to code block',
+            options?.warnings
+          );
           ctx.warnedDisplayMath = true;
         }
         const inner = m[1] ?? '';
         out.push('```\n', inner, '\n```\n\n');
       } else {
-        out.push(renderInline(n.children, ctx), '\n\n');
+        out.push(renderInline(n.children, ctx, options), '\n\n');
       }
       continue;
     }
     if (n.type === 'heading') {
-      const content = renderInline(n.children, ctx);
+      const content = renderInline(n.children, ctx, options);
       out.push(`*${content}*\n\n`);
       continue;
     }
     if (n.type === 'blockquote') {
-      const inner = renderBlockQuoted(n.children, ctx);
+      const inner = renderBlockQuoted(n.children, ctx, options);
       out.push(inner, '\n');
       // Visual break after a quote when followed by a paragraph.
       // Do not add when the next block is another blockquote.
@@ -103,7 +116,7 @@ function renderNodes(
       continue;
     }
     if (n.type === 'list') {
-      renderList(n, out, depth, ctx);
+      renderList(n, out, depth, ctx, options);
       continue;
     }
     if (n.type === 'thematicBreak') {
@@ -113,11 +126,12 @@ function renderNodes(
     if (n.type === 'footnoteDefinition') {
       // Collect to append at the end as `[n] text` under a "Footnotes:" section
       const id = n.identifier ?? '';
-      const content = renderInline(flattenParagraph(n.children), ctx);
+      const content = renderInline(flattenParagraph(n.children), ctx, options);
       ctx.footnotes?.set(String(id), content);
       if (!ctx.warnedFootnotes) {
-        console.warn(
-          'Slack: footnotes converted to inline caret + appended refs'
+        warn(
+          'Slack: footnotes converted to inline caret + appended refs',
+          options?.warnings
         );
         ctx.warnedFootnotes = true;
       }
@@ -128,24 +142,33 @@ function renderNodes(
       continue;
     }
     if (n.type === 'table') {
-      console.warn('Slack: table downgraded to code block');
-      out.push('```\n', tableToText(n, ctx), '\n```\n\n');
+      warn('Slack: table downgraded to code block', options?.warnings);
+      out.push('```\n', tableToText(n, ctx, options), '\n```\n\n');
       continue;
     }
     if (n.type === 'image') {
-      console.warn('Slack: images emitted as links');
-      const label = escapeSlackLabel(n.alt || 'image');
-      out.push(`<${n.url}|${label}>\n\n`);
+      warn(imageWarnMessage(options), options?.warnings);
+      const style = options?.target?.slack?.images?.style ?? 'link';
+      const emptyAltLabel =
+        options?.target?.slack?.images?.emptyAltLabel ?? 'image';
+      const alt = (n.alt ?? '').trim();
+      const labelRaw = alt.length > 0 ? alt : emptyAltLabel;
+      if (style === 'url') {
+        out.push(String(n.url ?? ''), '\n\n');
+      } else {
+        const label = escapeSlackLabel(labelRaw);
+        out.push(`<${n.url}|${label}>\n\n`);
+      }
       continue;
     }
     if (n.type === 'html') {
-      console.warn('Slack: HTML stripped');
+      warn('Slack: HTML stripped', options?.warnings);
       continue;
     }
     if (n.type === 'details') {
       const summary = n.data?.summary ?? 'Details';
       out.push(`*${escapeSlackText(summary)}*\n`);
-      const body = renderBlockQuoted(n.children, ctx);
+      const body = renderBlockQuoted(n.children, ctx, options);
       out.push(body, '\n');
       continue;
     }
@@ -154,7 +177,8 @@ function renderNodes(
 
 function renderInline(
   children: PhrasingContent[],
-  ctx?: SlackRenderCtx
+  ctx?: SlackRenderCtx,
+  options?: FormatOptions
 ): string {
   let s = '';
   for (const c of children) {
@@ -163,19 +187,19 @@ function renderInline(
       continue;
     }
     if (c.type === 'text') {
-      s += downgradeInlineMathInText(c.value ?? '', ctx);
+      s += downgradeInlineMathInText(c.value ?? '', ctx, options);
       continue;
     }
     if (c.type === 'emphasis') {
-      s += `_${renderInline(c.children, ctx)}_`;
+      s += `_${renderInline(c.children, ctx, options)}_`;
       continue;
     }
     if (c.type === 'strong') {
-      s += `*${renderInline(c.children, ctx)}*`;
+      s += `*${renderInline(c.children, ctx, options)}*`;
       continue;
     }
     if (c.type === 'delete') {
-      s += `~${renderInline(c.children, ctx)}~`;
+      s += `~${renderInline(c.children, ctx, options)}~`;
       continue;
     }
     if (c.type === 'inlineCode') {
@@ -183,16 +207,25 @@ function renderInline(
       continue;
     }
     if (c.type === 'link') {
-      const label = escapeSlackLabel(renderInline(c.children, ctx));
+      const label = escapeSlackLabel(renderInline(c.children, ctx, options));
       s += `<${c.url}|${label}>`;
       continue;
     }
     if (c.type === 'image') {
       // Slack doesn't support inline images in mrkdwn; emit as a link instead
       // and warn to make the downgrade visible in fixtures/tests.
-      console.warn('Slack: images emitted as links');
-      const label = escapeSlackLabel(c.alt || 'image');
-      s += `<${c.url}|${label}>`;
+      warn(imageWarnMessage(options), options?.warnings);
+      const style = options?.target?.slack?.images?.style ?? 'link';
+      const emptyAltLabel =
+        options?.target?.slack?.images?.emptyAltLabel ?? 'image';
+      const alt = (c.alt ?? '').trim();
+      const labelRaw = alt.length > 0 ? alt : emptyAltLabel;
+      if (style === 'url') {
+        s += String(c.url ?? '');
+      } else {
+        const label = escapeSlackLabel(labelRaw);
+        s += `<${c.url}|${label}>`;
+      }
       continue;
     }
     if (c.type === 'footnoteReference') {
@@ -210,7 +243,7 @@ function renderInline(
       } else if (c.data?.subtype === 'special' && c.data.id) {
         s += `<!${c.data.id}>`;
       } else {
-        s += renderInline(c.children, ctx);
+        s += renderInline(c.children, ctx, options);
       }
       continue;
     }
@@ -226,13 +259,18 @@ function renderList(
   node: List,
   out: string[],
   depth: number,
-  ctx: SlackRenderCtx
+  ctx: SlackRenderCtx,
+  options?: FormatOptions
 ): void {
-  const maxDepth = 2;
+  const configured = options?.target?.slack?.lists?.maxDepth;
+  const maxDepth =
+    typeof configured === 'number' && Number.isFinite(configured)
+      ? Math.max(1, Math.floor(configured))
+      : 2;
   const flattened = depth + 1 > maxDepth;
   if (flattened) {
     if (!ctx.flattenedListWarned) {
-      console.warn('Slack: flattened list depth > 2');
+      warn('Slack: flattened list depth > 2', options?.warnings);
       ctx.flattenedListWarned = true;
     }
   }
@@ -243,14 +281,19 @@ function renderList(
     const item = node.children[idx];
     if (!item) continue;
     const bullet = node.ordered ? `${start + idx}.` : '•';
-    const indent = '   '.repeat(Math.min(depth, maxDepth - 1));
+    const indent = '   '.repeat(Math.max(0, Math.min(depth, maxDepth - 1)));
     const prefix = flattened ? `${indent}→` : `${indent}${bullet}`;
 
     const nonListBlocks = item.children.filter((c) => c.type !== 'list');
     const nestedLists = item.children.filter(
       (c): c is List => c.type === 'list'
     );
-    const content = renderInline(flattenParagraph(nonListBlocks), ctx);
+
+    const content = renderInline(
+      flattenParagraph(nonListBlocks),
+      ctx,
+      options
+    );
     // Build the list line from parts to keep spacing simple and predictable.
     // Parts: prefix (bullet/indent) + optional task marker + optional inline content.
     const parts: string[] = [prefix];
@@ -270,7 +313,7 @@ function renderList(
     out.push(`${line}\n`);
 
     for (const nl of nestedLists) {
-      renderList(nl, out, depth + 1, ctx);
+      renderList(nl, out, depth + 1, ctx, options);
     }
     if (node.spread) {
       out.push('\n');
@@ -283,10 +326,11 @@ function renderList(
 
 function renderBlockQuoted(
   children: Root['children'],
-  ctx: SlackRenderCtx
+  ctx: SlackRenderCtx,
+  options?: FormatOptions
 ): string {
   const tmp: string[] = [];
-  renderNodes(children, tmp, 0, ctx);
+  renderNodes(children, tmp, 0, ctx, options);
   const text = tmp.join('').trimEnd();
   const lines = text.split('\n');
   return lines.map((l) => (l ? `> ${l}` : '>')).join('\n');
@@ -308,16 +352,26 @@ function flattenParagraph(
   return parts;
 }
 
-function tableToText(table: Table, ctx?: SlackRenderCtx): string {
+function tableToText(
+  table: Table,
+  ctx?: SlackRenderCtx,
+  options?: FormatOptions
+): string {
   const rows = table.children;
   return rows
     .map((row) =>
-      row.children.map((cell) => renderInline(cell.children, ctx)).join(' | ')
+      row.children
+        .map((cell) => renderInline(cell.children, ctx, options))
+        .join(' | ')
     )
     .join('\n');
 }
 
-function downgradeInlineMathInText(text: string, ctx?: SlackRenderCtx): string {
+function downgradeInlineMathInText(
+  text: string,
+  ctx?: SlackRenderCtx,
+  options?: FormatOptions
+): string {
   // Fast path: no dollar signs
   if (!text.includes('$')) return escapeSlackText(text);
 
@@ -360,7 +414,7 @@ function downgradeInlineMathInText(text: string, ctx?: SlackRenderCtx): string {
     if (found !== -1) {
       const inner = s.slice(i + 1, found);
       if (!ctx?.warnedInlineMath) {
-        console.warn('Slack: inline math downgraded to code span');
+        warn('Slack: inline math downgraded to code span', options?.warnings);
         if (ctx) ctx.warnedInlineMath = true;
       }
       out += '`' + inner + '`';

@@ -6,11 +6,16 @@ import remarkStringify, {
 import { unified } from 'unified';
 import { SKIP, visit } from 'unist-util-visit';
 
-import { type DetailsNode, type MentionNode } from '../types.js';
+import {
+  type DetailsNode,
+  type FormatOptions,
+  type MentionNode,
+} from '../types.js';
 import { fixEmptyTaskItems } from '../utils/tasklist-utils.js';
 
-export function renderGithub(ast: Root): string {
+export function renderGithub(ast: Root, options?: FormatOptions): string {
   const cloned: Root = structuredClone(ast);
+  const stringifyOptions = buildStringifyOptions(options);
 
   // Convert custom 'mention' nodes to plain text (GitHub has no native support)
   visit(
@@ -49,8 +54,10 @@ export function renderGithub(ast: Root): string {
       const summary = node.data?.summary ?? 'Details';
       // Convert any nested details inside the body to HTML first, then stringify
       // the body so remark doesn't encounter unknown `details` nodes.
-      convertNestedDetails(node.children);
-      const inner = trimTrailingNewlines(toMarkdownChildren(node.children));
+      convertNestedDetails(node.children, stringifyOptions);
+      const inner = trimTrailingNewlines(
+        toMarkdownChildren(node.children, stringifyOptions)
+      );
       const html = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
       if (typeof index === 'number' && parent) {
         const htmlNode: Html = { type: 'html', value: html };
@@ -65,10 +72,14 @@ export function renderGithub(ast: Root): string {
     .use(remarkStringify, stringifyOptions)
     .stringify(cloned);
 
+  // Preserve empty task list item state like "- [x]"/"- [ ]" on bare marker lines
   return fixEmptyTaskItems(cloned, out);
 }
 
-function convertNestedDetails(children: Root['children']): void {
+function convertNestedDetails(
+  children: Root['children'],
+  stringify: RemarkStringifyOptions
+): void {
   // Visit a synthetic root that wraps the provided children and transform
   // any nested `details` nodes in-place without manual casts.
   const root: Root = { type: 'root', children };
@@ -76,11 +87,11 @@ function convertNestedDetails(children: Root['children']): void {
     if (typeof index !== 'number' || !parent) return;
     // Ensure inner details are converted first so stringify doesn't see
     // unknown `details` nodes in the body.
-    convertNestedDetails(n.children);
+    convertNestedDetails(n.children, stringify);
     const summary =
       (typeof n.data?.summary === 'string' ? n.data.summary : undefined) ??
       'Details';
-    const inner = trimTrailingNewlines(toMarkdownChildren(n.children));
+    const inner = trimTrailingNewlines(toMarkdownChildren(n.children, stringify));
     const value = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
     const htmlNode: Html = { type: 'html', value };
     parent.children.splice(index, 1, htmlNode);
@@ -88,10 +99,13 @@ function convertNestedDetails(children: Root['children']): void {
   });
 }
 
-function toMarkdownChildren(children: Root['children']): string {
+function toMarkdownChildren(
+  children: Root['children'],
+  stringify: RemarkStringifyOptions
+): string {
   return unified()
     .use(remarkGfm)
-    .use(remarkStringify, stringifyOptions)
+    .use(remarkStringify, stringify)
     .stringify({ type: 'root', children } satisfies Root);
 }
 
@@ -103,14 +117,19 @@ function trimTrailingNewlines(s: string): string {
   return s.replace(/\n+$/, '');
 }
 
-// Prefer the two-space Markdown hard break syntax instead of a trailing
-// backslash so raw Markdown stays clean and readable in GitHub diffs.
-const stringifyOptions = {
-  bullet: '-',
-  fences: true,
-  handlers: {
-    break() {
-      return '  \n';
+function buildStringifyOptions(
+  options?: FormatOptions
+): RemarkStringifyOptions {
+  // Prefer two-space breaks by default; allow a single backslash alternative.
+  const style = options?.target?.github?.breaks ?? 'two-spaces';
+  return {
+    bullet: '-',
+    fences: true,
+    handlers: {
+      break() {
+        // backslash style: a single backslash followed by a newline
+        return style === 'backslash' ? '\\\n' : '  \n';
+      },
     },
-  },
-} satisfies RemarkStringifyOptions;
+  } satisfies RemarkStringifyOptions;
+}
