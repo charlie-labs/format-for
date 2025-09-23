@@ -245,7 +245,9 @@ function renderList(
     // Non-task items (checked is undefined/null) remain unchanged.
     const taskPrefix =
       typeof item.checked === 'boolean' ? (item.checked ? '[x] ' : '[ ] ') : '';
-    out.push(`${prefix} ${taskPrefix}${content}\n`);
+    // Trim the assembled line to avoid trailing whitespace (notably for empty-content items).
+    const line = `${prefix} ${taskPrefix}${content}`.trimEnd();
+    out.push(`${line}\n`);
 
     for (const nl of nestedLists) {
       renderList(nl, out, depth + 1, ctx);
