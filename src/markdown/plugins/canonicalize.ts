@@ -1,4 +1,5 @@
 import {
+  type Html,
   type Link,
   type Parent,
   type PhrasingContent,
@@ -73,6 +74,76 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
     // 1) Block-level: '+++ Title' ... '+++' → details (with nesting)
     canonicalizeDetailsInParent(root);
 
+    // 1.5) Convert Slack specials (and defensively, other Slack angle forms) that
+    // were parsed as `html` nodes into canonical `mention` nodes so renderers can
+    // handle them uniformly.
+    visit(
+      root,
+      'html',
+      (node: Html, index: number | undefined, parent: Parent | undefined) => {
+        if (!parent || typeof index !== 'number') return;
+        const v = String(node.value ?? '');
+
+        // <!here>, <!channel>, <!everyone>
+        let m = /^<!\s*(here|channel|everyone)\s*>$/.exec(v);
+        if (m) {
+          const mention: MentionNode = {
+            type: 'mention',
+            data: { subtype: 'special', id: m[1] },
+            children: [],
+          };
+          parent.children.splice(index, 1, mention);
+          return [CONTINUE, index + 1];
+        }
+
+        // Defensively handle Slack user/channel forms if they ever appear as `html`.
+        // <@U123>
+        m = /^<@([A-Z][A-Z0-9]+)>$/.exec(v);
+        if (m) {
+          const mention: MentionNode = {
+            type: 'mention',
+            data: { subtype: 'user', id: m[1] },
+            children: [],
+          };
+          parent.children.splice(index, 1, mention);
+          return [CONTINUE, index + 1];
+        }
+        // <@U123|label>
+        m = /^<@([A-Z][A-Z0-9]+)\|([^>]+)>$/.exec(v);
+        if (m) {
+          const mention: MentionNode = {
+            type: 'mention',
+            data: { subtype: 'user', id: m[1], label: m[2] },
+            children: [],
+          };
+          parent.children.splice(index, 1, mention);
+          return [CONTINUE, index + 1];
+        }
+        // <#C123|label>
+        m = /^<#([A-Z][A-Z0-9]+)\|([^>]+)>$/.exec(v);
+        if (m) {
+          const mention: MentionNode = {
+            type: 'mention',
+            data: { subtype: 'channel', id: m[1], label: m[2] },
+            children: [],
+          };
+          parent.children.splice(index, 1, mention);
+          return [CONTINUE, index + 1];
+        }
+        // <#C123>
+        m = /^<#([A-Z][A-Z0-9]+)>$/.exec(v);
+        if (m) {
+          const mention: MentionNode = {
+            type: 'mention',
+            data: { subtype: 'channel', id: m[1] },
+            children: [],
+          };
+          parent.children.splice(index, 1, mention);
+          return [CONTINUE, index + 1];
+        }
+      }
+    );
+
     // 2) Inline text normalization
     visit(
       root,
@@ -81,13 +152,15 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         if (!parent || isCodeLike(parent)) return;
 
         const fragments: PhrasingContent[] = [];
-        const input = String(node.value ?? '');
+        const input = String(node.value ?? '')
+          // Normalize HTML-escaped Slack specials that may appear in plain text.
+          .replace(/&lt;!(here|channel|everyone)&gt;/g, '<!$1>');
         let lastIndex = 0;
         let sawAnyMatch = false;
 
         // Composite regex covering several constructs; we will branch inside the loop
         const re =
-          /~([^~\s][^~]*?)~|<(?:(?:@([A-Z][A-Z0-9]+))|#([A-Z][A-Z0-9]+)\|([^>]+)|!((?:here|channel|everyone))|([^>|]+?)(?:\|([^>]*))?)>|@([a-zA-Z0-9._-]+)/g;
+          /~([^~\s][^~]*?)~|<(?:(?:@([A-Z][A-Z0-9]+)(?:\|([^>]+))?)|#([A-Z][A-Z0-9]+)(?:\|([^>]+))?|!((?:here|channel|everyone))|([^>|]+?)(?:\|([^>]*))?)>|@([a-zA-Z0-9._-]+)/g;
         re.lastIndex = 0;
         let m: RegExpExecArray | null;
         while ((m = re.exec(input))) {
@@ -108,42 +181,42 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
               children: [{ type: 'text', value: m[1] }],
             });
           } else if (m[2]) {
-            // <@U123>
+            // <@U123> or <@U123|label>
             const mention: MentionNode = {
               type: 'mention',
-              data: { subtype: 'user', id: m[2] },
+              data: { subtype: 'user', id: m[2], label: m[3] },
               children: [],
             };
             fragments.push(mention);
-          } else if (m[3]) {
-            // <#C123|name>
+          } else if (m[4]) {
+            // <#C123> or <#C123|name>
             const mention: MentionNode = {
               type: 'mention',
-              data: { subtype: 'channel', id: m[3], label: m[4] },
-              children: [],
-            };
-            fragments.push(mention);
-          } else if (m[5]) {
-            // <!here> / <!channel> / <!everyone>
-            const mention: MentionNode = {
-              type: 'mention',
-              data: { subtype: 'special', id: m[5] },
+              data: { subtype: 'channel', id: m[4], label: m[5] },
               children: [],
             };
             fragments.push(mention);
           } else if (m[6]) {
+            // <!here> / <!channel> / <!everyone>
+            const mention: MentionNode = {
+              type: 'mention',
+              data: { subtype: 'special', id: m[6] },
+              children: [],
+            };
+            fragments.push(mention);
+          } else if (m[7]) {
             // <url|label?> or <url>
-            const url = m[6];
-            const label = m[7] ?? m[6];
+            const url = m[7];
+            const label = m[8] ?? m[7];
             fragments.push({
               type: 'link',
               url,
               title: null,
               children: [{ type: 'text', value: label }],
             });
-          } else if (m[8]) {
+          } else if (m[9]) {
             // @user → choose by target when known; Slack emits mentions, others link
-            const key = m[8].toLowerCase();
+            const key = m[9].toLowerCase();
             if (target === 'slack') {
               const slackHit = slackUsers[key];
               if (slackHit?.id) {
@@ -158,6 +231,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
                 };
                 fragments.push(mention);
               } else {
+                // On Slack we ignore Linear lookups for @user when no Slack match exists
                 fragments.push({ type: 'text', value: whole });
               }
             } else {

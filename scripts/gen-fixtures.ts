@@ -14,7 +14,7 @@ async function main() {
     const inputPath = join(fx.path, 'input.md');
     const input = readFileSync(inputPath, 'utf8');
     const gh = await formatFor.github(input);
-    // Capture only Slack warnings to warnings.txt
+    // Capture Slack warnings to warnings.txt
     const warnings: string[] = [];
     const origWarn = console.warn;
     console.warn = (msg?: unknown) => {
@@ -26,12 +26,29 @@ async function main() {
     } finally {
       console.warn = origWarn;
     }
-    const ln = await formatFor.linear(input);
+    // Capture Linear warnings to warnings.linear.txt
+    const linearWarnings: string[] = [];
+    const origWarn2 = console.warn;
+    console.warn = (msg?: unknown) => {
+      linearWarnings.push(String(msg ?? ''));
+    };
+    let ln = '';
+    try {
+      ln = await formatFor.linear(input);
+    } finally {
+      console.warn = origWarn2;
+    }
     writeFileSync(join(fx.path, 'out.github.md'), gh);
     writeFileSync(join(fx.path, 'out.slack.txt'), sl);
     writeFileSync(join(fx.path, 'out.linear.md'), ln);
     if (warnings.length) {
       writeFileSync(join(fx.path, 'warnings.txt'), warnings.join('\n') + '\n');
+    }
+    if (linearWarnings.length) {
+      writeFileSync(
+        join(fx.path, 'warnings.linear.txt'),
+        linearWarnings.join('\n') + '\n'
+      );
     }
     // Reset warnings per fixture
   }

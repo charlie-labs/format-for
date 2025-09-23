@@ -1,10 +1,10 @@
-Inline math $a^2 + b^2 = c^2$ and a footnote reference .
-
-This is a footnote.
+Inline math `a^2 + b^2 = c^2` and a footnote reference ^[1].
 
 Block math-like:
 
-$$
+```
 E = mc^2
-$$
+```
 
+Footnotes:
+[1] This is a footnote.

@@ -23,9 +23,22 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     ) => {
       let text = '';
       if (node.data?.subtype === 'user') {
-        text = node.data.label ? `@${node.data.label}` : '@user';
+        // Keep literal Slack ID by default when no label/mapping is present
+        if (node.data.label) {
+          text = `@${node.data.label}`;
+        } else if (node.data.id) {
+          text = `@${node.data.id}`;
+        } else {
+          text = '@user';
+        }
       } else if (node.data?.subtype === 'channel') {
-        text = node.data.label ? `#${node.data.label}` : '#channel';
+        if (node.data.label) {
+          text = `#${node.data.label}`;
+        } else if (node.data.id) {
+          text = `#${node.data.id}`;
+        } else {
+          text = '#channel';
+        }
       } else if (node.data?.subtype === 'special') {
         text = node.data.id ? `@${node.data.id}` : '';
       }
@@ -59,37 +72,19 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
     }
   );
 
-  // Strip disallowed HTML that appears inside a paragraph by removing the
-  // entire paragraph node. This ensures mixed allowed+disallowed HTML does not
-  // partially leak through as plain text.
-  visit(
-    cloned,
-    'paragraph',
-    (
-      node: Paragraph,
-      index: number | undefined,
-      parent: Parent | undefined
-    ) => {
-      if (!parent || typeof index !== 'number') return;
-      const hasDisallowedHtml = node.children.some((child) => {
-        if (child?.type !== 'html') return false;
-        const v = String(child.value);
-        const tags = extractHtmlTags(v);
-        // Only paragraphs containing real, disallowed tags trigger full-paragraph removal
-        return tags.size > 0 && !isAllowedHtml(v, opts.allowHtml);
-      });
-      if (hasDisallowedHtml) {
-        console.warn('Linear: HTML paragraph stripped');
-        parent.children.splice(index, 1);
-        // Continue at the same index so we don't skip the next sibling.
-        return [SKIP, index];
-      }
-    }
-  );
+  // IMPORTANT: Keep allowed inline HTML even when mixed with disallowed HTML
+  // in the same paragraph. We no longer remove the entire paragraph when a
+  // disallowed tag appears; instead, we drop only the disallowed HTML nodes.
+  //
+  // Minor nicety: when a disallowed inline HTML node appears on a new line in
+  // the same paragraph (i.e., the preceding sibling text node contains a
+  // newline), trim that sibling text back to the last newline so the leftover
+  // line label like "Disallowed: " doesn't linger without the tag.
+  // The actual removal happens below in the dedicated 'html' visitor.
 
-  // Also strip disallowed standalone HTML nodes (not inside paragraphs), and
-  // strip inline HTML with no real tags (e.g., Slack forms like `<!here>`) while
-  // keeping the rest of the paragraph intact.
+  // Strip disallowed HTML nodes wherever they appear, and also strip inline
+  // HTML with no real tags (e.g., Slack forms like `<!here>`) while keeping the
+  // rest of the paragraph intact.
   visit(
     cloned,
     'html',
@@ -106,6 +101,59 @@ export function renderLinear(ast: Root, opts: { allowHtml: string[] }): string {
       // Otherwise, if disallowed (e.g., top-level html with disallowed tags), drop it.
       if (!isAllowedHtml(v, opts.allowHtml)) {
         console.warn('Linear: HTML stripped');
+
+        // If we're inside a paragraph and the previous sibling is text, we may
+        // need to trim back to the last newline — but only when the stripped
+        // HTML actually starts on a new line. Concretely, if the previous text
+        // ends at a newline (or only whitespace after the final newline), then
+        // trimming is safe. Otherwise, do not trim, or we'd delete content on
+        // the same line.
+        if (parent.type === 'paragraph') {
+          const prev = parent.children[index - 1];
+          if (prev && prev.type === 'text') {
+            const val = String(prev.value);
+            const nl = val.lastIndexOf('\n');
+            const tail = nl === -1 ? '' : val.slice(nl + 1);
+            // Only trim when everything after the last newline is whitespace.
+            if (nl !== -1 && /^\s*$/.test(tail)) {
+              const trimmed = val.slice(0, nl);
+              if (trimmed.length === 0) {
+                // Remove the prev text node entirely
+                parent.children.splice(index - 1, 1);
+                // Adjust our index because we've removed the previous sibling
+                index -= 1;
+              } else {
+                prev.value = trimmed;
+              }
+            }
+          }
+        }
+
+        // If this disallowed HTML is an opening tag, also remove everything up
+        // to its matching closing tag so inner text like 'nope()' does not
+        // leak through (remark splits `<script>nope()</script>` into
+        // '<script>', 'nope()', '</script>').
+        const openName = openingTagName(v);
+        const closeName = closingTagName(v);
+        if (openName && !closeName) {
+          let j = index + 1;
+          let depth = 1;
+          for (; j < parent.children.length; j++) {
+            const sib = parent.children[j];
+            if (!sib || sib.type !== 'html') continue;
+            const sv = String(sib.value);
+            if (openingTagName(sv) === openName) depth++;
+            if (closingTagName(sv) === openName) {
+              depth--;
+              if (depth === 0) break;
+            }
+          }
+          if (depth === 0) {
+            parent.children.splice(index, j - index + 1);
+            return [SKIP, index];
+          }
+        }
+
         parent.children.splice(index, 1);
         return [SKIP, index];
       }
@@ -159,4 +207,19 @@ function isHtmlCommentOrWhitespace(s: string): boolean {
   // - multiple adjacent comments: <!-- a --><!-- b -->
   const commentOnly = /^(?:<!--[\s\S]*?-->)+$/;
   return commentOnly.test(t);
+}
+
+function openingTagName(s: string): string | null {
+  const m = /^<\s*([A-Za-z][\w:-]*)\b/.exec(s);
+  if (!m) return null;
+  // Ensure not a closing tag
+  if (/^<\s*\//.test(s)) return null;
+  const name = m[1] ?? null;
+  return name ? name.toLowerCase() : null;
+}
+
+function closingTagName(s: string): string | null {
+  const m = /^<\s*\/\s*([A-Za-z][\w:-]*)\b/.exec(s);
+  const name = m && m[1] ? m[1] : null;
+  return name ? name.toLowerCase() : null;
 }

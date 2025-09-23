@@ -1,6 +1,6 @@
 # Hello
 
-A paragraph with ~~strike~~ and a [link](https://example.com) and @user and #general and .
+A paragraph with ~~strike~~ and a [link](https://example.com) and @U123 and #general and @here.
 
 +++ More Info
 
