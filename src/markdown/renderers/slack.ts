@@ -63,7 +63,11 @@ function renderNodes(
   depth: number,
   ctx: SlackRenderCtx
 ): void {
-  for (const n of nodes) {
+  // Index-based iteration so we can look ahead at the next sibling for
+  // spacing decisions (e.g., blockquote followed by paragraph).
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    if (!n) continue;
     if (n.type === 'paragraph') {
       // Detect display math-like blocks of the shape:
       //   $$\n...\n$$
@@ -90,6 +94,12 @@ function renderNodes(
     if (n.type === 'blockquote') {
       const inner = renderBlockQuoted(n.children, ctx);
       out.push(inner, '\n');
+      // Visual break after a quote when followed by a paragraph.
+      // Do not add when the next block is another blockquote.
+      const next = nodes[i + 1];
+      if (next && (next.type === 'paragraph' || next.type === 'heading')) {
+        out.push('\n');
+      }
       continue;
     }
     if (n.type === 'list') {
