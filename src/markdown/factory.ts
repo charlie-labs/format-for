@@ -89,7 +89,16 @@ function mergeWithDefaults(
     );
     if (merged.length > 0) autolinks[k] = merged;
   }
-  return { maps, autolinks } satisfies FormatOptions;
+  // Preserve any other caller-supplied knobs (e.g., warnings) while
+  // overriding the merged fields.
+  // Include provider defaults (future-compatible) then let caller options override,
+  // and finally override with our merged fields.
+  return {
+    ...defaults,
+    ...(options ?? {}),
+    maps,
+    autolinks,
+  } satisfies FormatOptions;
 }
 
 async function ensureAndBuild(
