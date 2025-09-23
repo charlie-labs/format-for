@@ -76,7 +76,9 @@ describe('integration: external API-backed defaults (conditional)', () => {
         if (firstKey) {
           const sample = `${firstKey}-123`;
           // Compute expected URL by applying the same $1/$2 substitution used by the canonicalizer
-          const mm = new RegExp(rule.pattern.source).exec(sample);
+          const mm = new RegExp(rule.pattern.source, rule.pattern.flags).exec(
+            sample
+          );
           if (mm) {
             const expectedUrl = rule.urlTemplate
               .replace(/\$(\d+)/g, (_, g1) => mm[Number(g1)] ?? '')

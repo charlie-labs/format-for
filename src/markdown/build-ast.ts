@@ -34,22 +34,24 @@ function mergeAutolinks(
   a?: FormatOptions['autolinks'],
   b?: FormatOptions['autolinks']
 ): NonNullable<FormatOptions['autolinks']> {
-  // Deep-merge by family, concatenating arrays instead of overwriting.
-  // De-duplicate by (pattern.source, pattern.flags, urlTemplate, labelTemplate).
-  const out: NonNullable<FormatOptions['autolinks']> = {};
+  // Start from existing families (currently just `linear`) so we don't drop
+  // any provided defaults. Then deep‑merge the Linear family by concatenating
+  // and de‑duping.
+  const out: NonNullable<FormatOptions['autolinks']> = { ...(a ?? {}) };
+
   const combined = [...(a?.linear ?? []), ...(b?.linear ?? [])];
   if (combined.length > 0) {
     const seen = new Set<string>();
-    const linear: NonNullable<
+    const nextLinear: NonNullable<
       NonNullable<FormatOptions['autolinks']>['linear']
     > = [];
     for (const r of combined) {
       const key = `${r.pattern.source}/${r.pattern.flags}|${r.urlTemplate}|${r.labelTemplate ?? ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      linear.push(r);
+      nextLinear.push(r);
     }
-    out.linear = linear;
+    out.linear = nextLinear;
   }
   return out;
 }

@@ -34,7 +34,8 @@ const LINEAR_TTL_MS = 60 * 60_000; // 60m
 const ERROR_RETRY_MS = 60_000; // 1m
 
 let current: Snapshot | undefined;
-let inflight: Promise<void> | undefined;
+let inflightSlack: Promise<void> | undefined;
+let inflightLinear: Promise<void> | undefined;
 let lastSlackLoad = 0;
 let lastLinearLoad = 0;
 let lastSlackAttempt = 0;
@@ -70,89 +71,80 @@ export function ensureRuntimeDefaults(hintTarget?: FormatTarget): {
   const needSlack = needSlackBase && cooledSlack;
   const needLinear = needLinearBase && cooledLinear;
 
-  if ((needSlack || needLinear) && !inflight) {
-    inflight = (async () => {
+  // Slack refresh (independent)
+  if (needSlack && !inflightSlack) {
+    lastSlackAttempt = Date.now();
+    inflightSlack = (async () => {
       try {
         const emptySlack: NonNullable<MentionMaps['slack']> = {
           users: {},
           channels: {},
         };
-        const emptyLinear: LinearBits = {
-          orgSlug: undefined,
-          teamKeys: [],
-          users: {},
-        };
-        // Record attempts so we can throttle failures
-        if (needSlack) lastSlackAttempt = Date.now();
-        if (needLinear) lastLinearAttempt = Date.now();
-
-        const promises: [
-          Promise<NonNullable<MentionMaps['slack']>>,
-          Promise<LinearBits>,
-        ] = [
-          needSlack && slackToken
-            ? loadSlackCatalog(slackToken)
-            : Promise.resolve(emptySlack),
-          needLinear && linearToken
-            ? loadLinearIndex(linearToken)
-            : Promise.resolve(emptyLinear),
-        ];
-        const [slackRes, linearRes] = await Promise.allSettled(promises);
-
-        const nextMaps: MentionMaps = { ...(current?.maps ?? {}) };
-        if (needSlack && slackRes.status === 'fulfilled') {
-          const slackVal = slackRes.value ?? emptySlack;
-          const usersCount = Object.keys(slackVal.users ?? {}).length;
-          const channelsCount = Object.keys(slackVal.channels ?? {}).length;
-          if (usersCount + channelsCount > 0) {
-            nextMaps.slack = slackVal;
-          }
+        const slackVal = slackToken
+          ? await loadSlackCatalog(slackToken)
+          : emptySlack;
+        const usersCount = Object.keys(slackVal.users ?? {}).length;
+        const channelsCount = Object.keys(slackVal.channels ?? {}).length;
+        if (usersCount + channelsCount > 0) {
+          // Merge onto the latest snapshot to avoid clobbering a concurrent Linear refresh
+          const existing = current;
+          const mergedMaps: MentionMaps = {
+            ...(existing?.maps ?? {}),
+            slack: slackVal,
+          };
+          current = {
+            maps: mergedMaps,
+            autolinks: existing?.autolinks,
+            loadedAt: Date.now(),
+          };
           lastSlackLoad = Date.now();
-        } else if (slackRes.status === 'rejected') {
-          // Swallow errors by default to avoid polluting output. Enable logs by setting
-          // FORMAT_FOR_LOG_RUNTIME_ERRORS=1 in the env if needed for debugging.
-          if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
-            console.warn(
-              '[format-for] Slack defaults refresh failed:',
-              slackRes.reason
-            );
-          }
         }
-
-        let nextAutolinks = current?.autolinks ?? {};
-        if (needLinear && linearRes.status === 'fulfilled') {
-          const bits = linearRes.value;
-          if (Object.keys(bits.users).length > 0) {
-            nextMaps.linear = { users: bits.users };
-          }
-          const rules =
-            bits.orgSlug && bits.teamKeys.length > 0
-              ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
-              : [];
-          // Replace only the Linear rules; preserve other families if added later
-          nextAutolinks = { ...nextAutolinks, linear: rules };
-          lastLinearLoad = Date.now();
-        } else if (linearRes.status === 'rejected') {
-          if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
-            console.warn(
-              '[format-for] Linear defaults refresh failed:',
-              linearRes.reason
-            );
-          }
-        }
-
-        current = {
-          maps: nextMaps,
-          autolinks: nextAutolinks,
-          loadedAt: Date.now(),
-        };
       } catch (err) {
-        // Keep a best-effort model; failures shouldn't block formatting.
         if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
-          console.warn('[format-for] defaults loader failed:', err);
+          console.warn('[format-for] Slack defaults refresh failed:', err);
         }
       } finally {
-        inflight = undefined;
+        inflightSlack = undefined;
+      }
+    })();
+  }
+
+  // Linear refresh (independent)
+  if (needLinear && !inflightLinear) {
+    lastLinearAttempt = Date.now();
+    inflightLinear = (async () => {
+      try {
+        const bits = linearToken
+          ? await loadLinearIndex(linearToken)
+          : ({
+              orgSlug: undefined,
+              teamKeys: [],
+              users: {},
+            } satisfies LinearBits);
+        const appliedUsers = Object.keys(bits.users).length > 0;
+        const rules =
+          bits.orgSlug && bits.teamKeys.length > 0
+            ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
+            : [];
+        // Merge onto the latest snapshot to avoid clobbering a concurrent Slack refresh
+        const existing = current;
+        const nextMaps: MentionMaps = { ...(existing?.maps ?? {}) };
+        if (appliedUsers) nextMaps.linear = { users: bits.users };
+        const nextAutolinks = { ...(existing?.autolinks ?? {}), linear: rules };
+        if (appliedUsers || rules.length > 0) {
+          current = {
+            maps: nextMaps,
+            autolinks: nextAutolinks,
+            loadedAt: Date.now(),
+          };
+          lastLinearLoad = Date.now();
+        }
+      } catch (err) {
+        if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
+          console.warn('[format-for] Linear defaults refresh failed:', err);
+        }
+      } finally {
+        inflightLinear = undefined;
       }
     })();
   }
@@ -192,12 +184,19 @@ export async function ensureDefaultsForTarget(
         lastSlackAttempt = now;
         try {
           const slackMaps = await loadSlackCatalog(slackToken);
+          const usersCount = Object.keys(slackMaps.users ?? {}).length;
+          const channelsCount = Object.keys(slackMaps.channels ?? {}).length;
+          const applied = usersCount + channelsCount > 0;
+          const prev = current;
+          const nextMaps: MentionMaps = applied
+            ? { ...(prev?.maps ?? {}), slack: slackMaps }
+            : { ...(prev?.maps ?? {}) };
           current = {
-            maps: { ...(current?.maps ?? {}), slack: slackMaps },
-            autolinks: current?.autolinks,
+            maps: nextMaps,
+            autolinks: prev?.autolinks,
             loadedAt: Date.now(),
           };
-          lastSlackLoad = Date.now();
+          if (applied) lastSlackLoad = Date.now();
         } catch (err) {
           if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
             console.warn(
@@ -221,23 +220,21 @@ export async function ensureDefaultsForTarget(
         lastLinearAttempt = now;
         try {
           const bits = await loadLinearIndex(linearToken);
-          const nextMaps: MentionMaps = { ...(current?.maps ?? {}) };
-          if (Object.keys(bits.users).length > 0) {
-            nextMaps.linear = { users: bits.users };
-          }
-          const nextAutolinks = {
-            ...(current?.autolinks ?? {}),
-            linear:
-              bits.orgSlug && bits.teamKeys.length > 0
-                ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
-                : [],
-          };
+          const prev = current;
+          const nextMaps: MentionMaps = { ...(prev?.maps ?? {}) };
+          const appliedUsers = Object.keys(bits.users).length > 0;
+          if (appliedUsers) nextMaps.linear = { users: bits.users };
+          const rules =
+            bits.orgSlug && bits.teamKeys.length > 0
+              ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
+              : [];
+          const nextAutolinks = { ...(prev?.autolinks ?? {}), linear: rules };
           current = {
             maps: nextMaps,
             autolinks: nextAutolinks,
             loadedAt: Date.now(),
           };
-          lastLinearLoad = Date.now();
+          if (appliedUsers || rules.length > 0) lastLinearLoad = Date.now();
         } catch (err) {
           if (safeEnv('FORMAT_FOR_LOG_RUNTIME_ERRORS') === '1') {
             console.warn(
@@ -269,7 +266,8 @@ function safeEnv(key: string): string | undefined {
 // Exposed only for tests
 export function resetRuntimeDefaultsForTests(): void {
   current = undefined;
-  inflight = undefined;
+  inflightSlack = undefined;
+  inflightLinear = undefined;
   lastSlackLoad = 0;
   lastLinearLoad = 0;
   lastSlackAttempt = 0;
@@ -317,7 +315,9 @@ export async function forceLoadNowForTests(): Promise<void> {
             ? buildLinearAutolinks(bits.orgSlug, bits.teamKeys)
             : [],
       };
-      lastLinearLoad = Date.now();
+      const appliedUsers = Object.keys(bits.users).length > 0;
+      const rulesApplied = (nextAutolinks.linear?.length ?? 0) > 0;
+      if (appliedUsers || rulesApplied) lastLinearLoad = Date.now();
     }
     current = {
       maps: nextMaps,
