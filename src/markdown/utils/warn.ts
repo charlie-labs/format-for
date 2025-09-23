@@ -17,11 +17,7 @@ export function warn(message: string, opts?: FormatOptions['warnings']): void {
     }
   }
   if (!opts || opts.mode !== 'silent') {
-    try {
-      // eslint-disable-next-line no-console
-      console.warn(String(message));
-    } catch {
-      // swallow
-    }
+    // eslint-disable-next-line no-console
+    console.warn(String(message));
   }
 }

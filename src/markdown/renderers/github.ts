@@ -78,7 +78,7 @@ export function renderGithub(ast: Root, options?: FormatOptions): string {
 
 function convertNestedDetails(
   children: Root['children'],
-  stringify: RemarkStringifyOptions
+  stringifyOptions: RemarkStringifyOptions
 ): void {
   // Visit a synthetic root that wraps the provided children and transform
   // any nested `details` nodes in-place without manual casts.
@@ -87,12 +87,12 @@ function convertNestedDetails(
     if (typeof index !== 'number' || !parent) return;
     // Ensure inner details are converted first so stringify doesn't see
     // unknown `details` nodes in the body.
-    convertNestedDetails(n.children, stringify);
+    convertNestedDetails(n.children, stringifyOptions);
     const summary =
       (typeof n.data?.summary === 'string' ? n.data.summary : undefined) ??
       'Details';
     const inner = trimTrailingNewlines(
-      toMarkdownChildren(n.children, stringify)
+      toMarkdownChildren(n.children, stringifyOptions)
     );
     const value = `<details>\n<summary>${escapeHtml(summary)}</summary>\n\n${inner}\n</details>`;
     const htmlNode: Html = { type: 'html', value };
@@ -103,11 +103,11 @@ function convertNestedDetails(
 
 function toMarkdownChildren(
   children: Root['children'],
-  stringify: RemarkStringifyOptions
+  stringifyOptions: RemarkStringifyOptions
 ): string {
   return unified()
     .use(remarkGfm)
-    .use(remarkStringify, stringify)
+    .use(remarkStringify, stringifyOptions)
     .stringify({ type: 'root', children } satisfies Root);
 }
 
