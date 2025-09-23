@@ -1,44 +1,42 @@
-# Dependabot configuration for this repository
-# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates
 version: 2
-updates:
-  # Keep GitHub Actions up to date
-  - package-ecosystem: 'github-actions'
-    directory: '/'
-    schedule:
-      interval: 'weekly'
-      day: 'monday'
-      time: '09:00'
-      timezone: 'America/Los_Angeles'
-    open-pull-requests-limit: 10
-    commit-message:
-      # Prefix helps keep history scannable
-      prefix: 'ci'
-      include: 'scope'
-    labels:
-      - 'dependencies'
-      - 'github-actions'
-    # Reviewers are optional; adjust to team norms if noisy
-    reviewers:
-      - 'rileytomasek'
-    # Rely on the repository's default branch (avoid hard-coding "master"/"main")
 
-  # Keep Bun (npm ecosystem via Bun) dependencies up to date
-  # Docs confirm Dependabot supports Bun with the text-based `bun.lock` file.
-  # It will update both `package.json` and `bun.lock` as needed.
+updates:
+  # Keep Bun-managed dependencies up to date using the text-based bun.lock
   - package-ecosystem: 'bun'
     directory: '/'
     schedule:
       interval: 'weekly'
       day: 'monday'
-      time: '09:00'
+      time: '04:00'
       timezone: 'America/Los_Angeles'
     open-pull-requests-limit: 10
     commit-message:
       prefix: 'deps'
-      include: 'scope'
+      prefix-development: 'dev-deps'
     labels:
       - 'dependencies'
-      - 'bun'
-    reviewers:
-      - 'rileytomasek'
+    # Group routine devDependency bumps to reduce PR noise
+    groups:
+      dev-deps-minor-patch:
+        dependency-type: 'development'
+        update-types:
+          - 'minor'
+          - 'patch'
+      # Group routine production (non-dev) dependency bumps as well
+      prod-deps-minor-patch:
+        dependency-type: 'production'
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  # Keep GitHub Actions pinned to the latest versions
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '04:00'
+      timezone: 'America/Los_Angeles'
+    open-pull-requests-limit: 10
+    labels:
+      - 'dependencies'
