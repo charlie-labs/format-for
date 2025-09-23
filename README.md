@@ -201,4 +201,4 @@ If you convert this to a library and add a release process (e.g., Changesets), d
 
 ## License
 
-Update this section once you choose a license for your project.
+MIT — see [LICENSE](./LICENSE) for details.
