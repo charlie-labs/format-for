@@ -118,4 +118,30 @@ describe('slack: link/image label escaping', () => {
     expect(out).toContain('<https://example.com>');
     expect(out).not.toContain('<https://example.com|>');
   });
+
+  test('image: empty label renders as bare URL (no `<url|>`) when `emptyAltLabel` is empty', () => {
+    const ast = root([
+      { type: 'image', url: 'https://img', alt: '' },
+      {
+        type: 'paragraph',
+        children: [{ type: 'image', url: ' https://inline ', alt: '' }],
+      },
+    ]);
+    const out = renderSlack(ast as any, {
+      target: { slack: { images: { style: 'link', emptyAltLabel: '' } } },
+    });
+    expect(out).toContain('<https://img>');
+    expect(out).toContain('<https://inline>');
+    expect(out).not.toContain('<https://img|>');
+    expect(out).not.toContain('<https://inline|>');
+  });
+
+  test('image: whitespace-only alt renders as bare URL (no `<url|>`) when `emptyAltLabel` is empty', () => {
+    const ast = root([{ type: 'image', url: 'https://img', alt: '   ' }]);
+    const out = renderSlack(ast as any, {
+      target: { slack: { images: { style: 'link', emptyAltLabel: '' } } },
+    });
+    expect(out).toContain('<https://img>');
+    expect(out).not.toContain('<https://img|>');
+  });
 });

@@ -88,6 +88,8 @@ function formatSlackImage(
     return urlStr;
   }
   const label = escapeSlackLabel(labelRaw);
+  // If the label is empty or whitespace-only, prefer a bare URL to avoid `<url|>` tokens
+  if (label.trim().length === 0) return `<${urlStr}>`;
   return `<${urlStr}|${label}>`;
 }
 
