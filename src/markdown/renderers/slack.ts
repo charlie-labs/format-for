@@ -241,7 +241,11 @@ function renderList(
       (c): c is List => c.type === 'list'
     );
     const content = renderInline(flattenParagraph(nonListBlocks), ctx);
-    out.push(`${prefix} ${content}\n`);
+    // Preserve task list state by echoing [x]/[ ] for items with a boolean `checked`.
+    // Non-task items (checked is undefined/null) remain unchanged.
+    const taskPrefix =
+      typeof item.checked === 'boolean' ? (item.checked ? '[x] ' : '[ ] ') : '';
+    out.push(`${prefix} ${taskPrefix}${content}\n`);
 
     for (const nl of nestedLists) {
       renderList(nl, out, depth + 1, ctx);
