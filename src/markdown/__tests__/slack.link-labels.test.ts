@@ -119,6 +119,25 @@ describe('slack: link/image label escaping', () => {
     expect(out).not.toContain('<https://example.com|>');
   });
 
+  test('inline link: whitespace-only label renders as bare URL (trim-aware check)', () => {
+    const ast = root([
+      {
+        type: 'paragraph',
+        children: [
+          {
+            type: 'link',
+            url: ' https://ex.com ',
+            // label is whitespace-only; should be treated as empty
+            children: [{ type: 'text', value: '   ' }],
+          },
+        ],
+      },
+    ]);
+    const out = renderSlack(ast as any);
+    expect(out).toContain('<https://ex.com>');
+    expect(out).not.toContain('<https://ex.com|');
+  });
+
   test('image: empty label renders as bare URL (no `<url|>`) when `emptyAltLabel` is empty', () => {
     const ast = root([
       { type: 'image', url: 'https://img', alt: '' },

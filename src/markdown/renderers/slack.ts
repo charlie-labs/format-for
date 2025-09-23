@@ -226,11 +226,12 @@ function renderInline(
     if (c.type === 'link') {
       // Normalize and guard the URL to avoid emitting invalid tokens like `<|label>`
       const raw = typeof c.url === 'string' ? c.url.trim() : '';
-      const label = escapeSlackLabel(renderInline(c.children, ctx, options));
+      const labelRaw = renderInline(c.children, ctx, options);
+      const label = escapeSlackLabel(labelRaw);
       if (raw.length === 0) {
         s += label; // no URL => just the label
-      } else if (label.length === 0) {
-        s += `<${raw}>`; // no label => bare URL (avoid `<url|>`)
+      } else if (labelRaw.trim().length === 0) {
+        s += `<${raw}>`; // no/whitespace label => bare URL (avoid `<url|>`)
       } else {
         s += `<${raw}|${label}>`;
       }
