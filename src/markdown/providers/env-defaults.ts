@@ -1,6 +1,7 @@
 import {
   type AutoLinkRule,
   type DefaultsProvider,
+  type FormatTarget,
   type MentionMaps,
 } from '../types.js';
 import { type Cache, InMemoryCache } from '../utils/cache.js';
@@ -169,7 +170,7 @@ export function createEnvDefaultsProvider(cfg?: {
 
   function toMapsAndLinks(): Readonly<{
     maps?: MentionMaps;
-    autolinks?: { linear?: AutoLinkRule[] };
+    autolinks?: Partial<Record<FormatTarget, AutoLinkRule[]>>;
   }> {
     const maps: MentionMaps = {};
     if (slackSnap) {
@@ -186,7 +187,7 @@ export function createEnvDefaultsProvider(cfg?: {
         maps.linear = { users: linearSnap.users };
       }
     }
-    const autolinks: { linear?: AutoLinkRule[] } = {};
+    const autolinks: Partial<Record<FormatTarget, AutoLinkRule[]>> = {};
     if (linearSnap && linearSnap.orgSlug && linearSnap.teamKeys.length > 0) {
       const escaped = linearSnap.teamKeys
         .filter(Boolean)
@@ -199,8 +200,10 @@ export function createEnvDefaultsProvider(cfg?: {
         autolinks.linear = [{ pattern: re, urlTemplate }];
       }
     }
-    const out: { maps?: MentionMaps; autolinks?: { linear?: AutoLinkRule[] } } =
-      {};
+    const out: {
+      maps?: MentionMaps;
+      autolinks?: Partial<Record<FormatTarget, AutoLinkRule[]>>;
+    } = {};
     if (Object.keys(maps).length > 0) {
       out.maps = maps;
     }

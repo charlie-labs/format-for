@@ -56,7 +56,7 @@ describe('createFormatFor', () => {
       },
     });
 
-    const input = '@alice also see XYZ-42';
+    const input = '@alice also see XYZ-42 and ABC-7';
     const out = await ff.linear(input, {
       maps: {
         linear: {
@@ -83,5 +83,7 @@ describe('createFormatFor', () => {
     expect(out).toContain('[A](https://me.test/alice)');
     // provider autolink should still apply, and caller rule appended
     expect(out).toContain('[XYZ-42](https://x.test/42)');
+    // caller-supplied autolink should apply
+    expect(out).toContain('[ABC-7](https://a.test/7)');
   });
 });

@@ -18,9 +18,25 @@ function buildAst(
   input: string,
   options: FormatOptions | undefined
 ): CanonicalMdast {
+  const raw = [
+    ...(options?.autolinks?.github ?? []),
+    ...(options?.autolinks?.slack ?? []),
+    ...(options?.autolinks?.linear ?? []),
+  ];
+  // Cross-target dedupe and normalization (ensure global + canonical flags)
+  const byPattern = new Map<string, AutoLinkRule>();
+  for (const r of raw) {
+    const base = r.pattern;
+    const norm = base.global ? base : new RegExp(base.source, base.flags + 'g');
+    const key = `${norm.source}|${norm.flags}`;
+    if (!byPattern.has(key)) {
+      byPattern.set(key, norm === base ? r : { ...r, pattern: norm });
+    }
+  }
+  const autos = [...byPattern.values()];
   return parseToCanonicalMdast(input, {
     maps: options?.maps ?? {},
-    autolinks: options?.autolinks ?? {},
+    autolinks: autos,
   });
 }
 
@@ -28,28 +44,28 @@ function concatDedupeAutolinks(
   a: AutoLinkRule[] | undefined,
   b: AutoLinkRule[] | undefined
 ): AutoLinkRule[] {
-  const out: AutoLinkRule[] = [];
-  const seen = new Set<string>();
-  const push = (r?: AutoLinkRule) => {
-    if (!r) return;
-    const flags = r.pattern.flags.includes('g')
-      ? r.pattern.flags
-      : r.pattern.flags + 'g';
-    const key = `${r.pattern.source}|${flags}|${r.urlTemplate}|${
-      r.labelTemplate ?? ''
-    }`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    // Normalize flags to include 'g' to avoid runtime surprises in callers
-    if (!r.pattern.flags.includes('g')) {
-      out.push({ ...r, pattern: new RegExp(r.pattern.source, flags) });
-    } else {
-      out.push(r);
-    }
+  // Dedup by normalized pattern (source + canonical flags) and prefer `b` (caller)
+  // over `a` (provider) when patterns collide. We also normalize patterns to
+  // include the 'g' flag and use canonical flag order for stable keys.
+  const byPattern = new Map<string, AutoLinkRule>();
+  const normalize = (r: AutoLinkRule): AutoLinkRule => {
+    const base = r.pattern;
+    const norm = base.global ? base : new RegExp(base.source, base.flags + 'g');
+    // If pattern already had 'g', `norm` === `base`; else clone rule with normalized pattern
+    return norm === base ? r : { ...r, pattern: norm };
   };
-  for (const r of a ?? []) push(r);
-  for (const r of b ?? []) push(r);
-  return out;
+
+  for (const r of a ?? []) {
+    const n = normalize(r);
+    const key = `${n.pattern.source}|${n.pattern.flags}`; // canonical flags
+    if (!byPattern.has(key)) byPattern.set(key, n);
+  }
+  for (const r of b ?? []) {
+    const n = normalize(r);
+    const key = `${n.pattern.source}|${n.pattern.flags}`;
+    byPattern.set(key, n); // caller overrides
+  }
+  return [...byPattern.values()];
 }
 
 function mergeMentionMaps(a?: MentionMaps, b?: MentionMaps): MentionMaps {
@@ -84,15 +100,21 @@ function mergeMentionMaps(a?: MentionMaps, b?: MentionMaps): MentionMaps {
 }
 
 function mergeWithDefaults(
-  defaults: { maps?: MentionMaps; autolinks?: { linear?: AutoLinkRule[] } },
+  defaults: {
+    maps?: MentionMaps;
+    autolinks?: Partial<Record<FormatTarget, AutoLinkRule[]>>;
+  },
   options: FormatOptions | undefined
 ): FormatOptions {
   const maps = mergeMentionMaps(defaults.maps, options?.maps);
-  const linearAuto = concatDedupeAutolinks(
-    defaults.autolinks?.linear,
-    options?.autolinks?.linear
-  );
-  const autolinks = linearAuto.length > 0 ? { linear: linearAuto } : {};
+  const autolinks: Partial<Record<FormatTarget, AutoLinkRule[]>> = {};
+  for (const k of ['github', 'slack', 'linear'] as const) {
+    const merged = concatDedupeAutolinks(
+      defaults.autolinks?.[k],
+      options?.autolinks?.[k]
+    );
+    if (merged.length > 0) autolinks[k] = merged;
+  }
   return { maps, autolinks } satisfies FormatOptions;
 }
 

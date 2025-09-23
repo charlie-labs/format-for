@@ -10,7 +10,9 @@ export type FormatTarget = 'github' | 'slack' | 'linear';
 
 /**
  * Rule to autolink patterns (like GitHub autolinks).
- * Use RegExp with global flag; $0..$n allowed in templates.
+ * The library will normalize provided RegExp patterns to be global
+ * (add the 'g' flag when missing) to avoid lastIndex bleed and to make
+ * replacement passes reliable. $0..$n are allowed in templates.
  */
 export interface AutoLinkRule {
   pattern: RegExp;
@@ -48,8 +50,12 @@ export type LinearAllowedHtmlTag = (typeof DEFAULT_LINEAR_HTML_ALLOW)[number];
 /** Options for formatting. All synchronous. */
 export interface FormatOptions {
   maps?: MentionMaps;
-  /** Autolink rules for Linear (and optionally others in future). */
-  autolinks?: { linear?: AutoLinkRule[] };
+  /**
+   * Autolink rules grouped by target. Rules are applied at parse time to the
+   * canonical AST (target-agnostic), so callers may place rules under any key.
+   * Merging logic treats targets independently and concatenates results.
+   */
+  autolinks?: Partial<Record<FormatTarget, AutoLinkRule[]>>;
   // Note: Linear's HTML allowlist is intentionally NOT configurable by callers.
 }
 

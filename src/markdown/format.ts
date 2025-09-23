@@ -3,6 +3,7 @@ import { renderGithub } from './renderers/github.js';
 import { renderLinear } from './renderers/linear.js';
 import { renderSlack } from './renderers/slack.js';
 import {
+  type AutoLinkRule,
   DEFAULT_LINEAR_HTML_ALLOW,
   type FormatFor,
   type FormatOptions,
@@ -14,9 +15,25 @@ function buildAst(
   input: string,
   options: FormatOptions | undefined
 ): CanonicalMdast {
+  const raw = [
+    ...(options?.autolinks?.github ?? []),
+    ...(options?.autolinks?.slack ?? []),
+    ...(options?.autolinks?.linear ?? []),
+  ];
+  // Cross-target dedupe and normalization (ensure global + canonical flags)
+  const byPattern = new Map<string, AutoLinkRule>();
+  for (const r of raw) {
+    const base = r.pattern;
+    const norm = base.global ? base : new RegExp(base.source, base.flags + 'g');
+    const key = `${norm.source}|${norm.flags}`;
+    if (!byPattern.has(key)) {
+      byPattern.set(key, norm === base ? r : { ...r, pattern: norm });
+    }
+  }
+  const autos = [...byPattern.values()];
   return parseToCanonicalMdast(input, {
     maps: options?.maps ?? {},
-    autolinks: options?.autolinks ?? {},
+    autolinks: autos,
   });
 }
 

@@ -14,14 +14,14 @@ import { assertIsRoot, type AutoLinkRule, type MentionMaps } from './types.js';
  */
 export function parseToCanonicalMdast(
   input: string,
-  opts: { maps?: MentionMaps; autolinks?: { linear?: AutoLinkRule[] } } = {}
+  opts: { maps?: MentionMaps; autolinks?: AutoLinkRule[] } = {}
 ): Root {
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkCanonicalizeMixed, {
       maps: opts.maps ?? {},
-      autolinks: opts.autolinks?.linear ?? [],
+      autolinks: opts.autolinks ?? [],
     })
     // Replace literal "\n" with `break` nodes (hard line breaks), skipping code.
     .use(remarkFixLiteralNewlines);
