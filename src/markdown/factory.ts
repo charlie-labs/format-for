@@ -1,4 +1,4 @@
-import { parseToCanonicalMdast } from './parse.js';
+import { buildAst, type CanonicalMdast } from './build-ast.js';
 import { renderGithub } from './renderers/github.js';
 import { renderLinear } from './renderers/linear.js';
 import { renderSlack } from './renderers/slack.js';
@@ -11,34 +11,9 @@ import {
   type FormatTarget,
   type MentionMaps,
 } from './types.js';
+// (no extra utils needed here)
 
-type CanonicalMdast = ReturnType<typeof parseToCanonicalMdast>;
-
-function buildAst(
-  input: string,
-  options: FormatOptions | undefined
-): CanonicalMdast {
-  const raw = [
-    ...(options?.autolinks?.github ?? []),
-    ...(options?.autolinks?.slack ?? []),
-    ...(options?.autolinks?.linear ?? []),
-  ];
-  // Cross-target dedupe and normalization (ensure global + canonical flags)
-  const byPattern = new Map<string, AutoLinkRule>();
-  for (const r of raw) {
-    const base = r.pattern;
-    const norm = base.global ? base : new RegExp(base.source, base.flags + 'g');
-    const key = `${norm.source}|${norm.flags}`;
-    if (!byPattern.has(key)) {
-      byPattern.set(key, norm === base ? r : { ...r, pattern: norm });
-    }
-  }
-  const autos = [...byPattern.values()];
-  return parseToCanonicalMdast(input, {
-    maps: options?.maps ?? {},
-    autolinks: autos,
-  });
-}
+// buildAst shared in ./build-ast
 
 function concatDedupeAutolinks(
   a: AutoLinkRule[] | undefined,
@@ -51,19 +26,18 @@ function concatDedupeAutolinks(
   const normalize = (r: AutoLinkRule): AutoLinkRule => {
     const base = r.pattern;
     const norm = base.global ? base : new RegExp(base.source, base.flags + 'g');
-    // If pattern already had 'g', `norm` === `base`; else clone rule with normalized pattern
     return norm === base ? r : { ...r, pattern: norm };
   };
 
   for (const r of a ?? []) {
     const n = normalize(r);
-    const key = `${n.pattern.source}|${n.pattern.flags}`; // canonical flags
+    const key = `${n.pattern.source}|${n.pattern.flags}`;
     if (!byPattern.has(key)) byPattern.set(key, n);
   }
   for (const r of b ?? []) {
     const n = normalize(r);
     const key = `${n.pattern.source}|${n.pattern.flags}`;
-    byPattern.set(key, n); // caller overrides
+    byPattern.set(key, n);
   }
   return [...byPattern.values()];
 }
@@ -129,7 +103,7 @@ async function ensureAndBuild(
     await provider.ensureFor(target);
     effective = mergeWithDefaults(provider.snapshot(), options);
   }
-  const ast = buildAst(input, effective);
+  const ast = buildAst(input, effective, target);
   return { ast, effective };
 }
 

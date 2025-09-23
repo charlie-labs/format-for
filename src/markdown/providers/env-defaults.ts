@@ -6,6 +6,16 @@ import {
 } from '../types.js';
 import { type Cache, InMemoryCache } from '../utils/cache.js';
 
+function errMsg(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 type SlackSnapshotV1 = {
   users: Record<string, { id: string; label?: string }>;
   channels: Record<string, { id: string; label?: string }>;
@@ -71,9 +81,7 @@ export function createEnvDefaultsProvider(cfg?: {
         return;
       }
     } catch (err) {
-      onError(
-        `defaults: slack cache get failed: ${String((err as Error)?.message ?? err)}`
-      );
+      onError(`defaults: slack cache get failed: ${errMsg(err)}`);
     }
 
     // No cache: block and fetch once
@@ -99,14 +107,10 @@ export function createEnvDefaultsProvider(cfg?: {
         try {
           await cache.set(keySlack, snap, { ttlMs: slackTtl });
         } catch (err) {
-          onError(
-            `defaults: slack cache set failed: ${String((err as Error)?.message ?? err)}`
-          );
+          onError(`defaults: slack cache set failed: ${errMsg(err)}`);
         }
       } catch (err) {
-        onError(
-          `defaults: slack fetch failed: ${String((err as Error)?.message ?? err)}`
-        );
+        onError(`defaults: slack fetch failed: ${errMsg(err)}`);
       } finally {
         inflightSlack = undefined;
       }
@@ -127,9 +131,7 @@ export function createEnvDefaultsProvider(cfg?: {
         return;
       }
     } catch (err) {
-      onError(
-        `defaults: linear cache get failed: ${String((err as Error)?.message ?? err)}`
-      );
+      onError(`defaults: linear cache get failed: ${errMsg(err)}`);
     }
 
     await refreshLinear();
@@ -153,14 +155,10 @@ export function createEnvDefaultsProvider(cfg?: {
         try {
           await cache.set(keyLinear, snap, { ttlMs: linearTtl });
         } catch (err) {
-          onError(
-            `defaults: linear cache set failed: ${String((err as Error)?.message ?? err)}`
-          );
+          onError(`defaults: linear cache set failed: ${errMsg(err)}`);
         }
       } catch (err) {
-        onError(
-          `defaults: linear fetch failed: ${String((err as Error)?.message ?? err)}`
-        );
+        onError(`defaults: linear fetch failed: ${errMsg(err)}`);
       } finally {
         inflightLinear = undefined;
       }
@@ -215,10 +213,17 @@ export function createEnvDefaultsProvider(cfg?: {
 
   return {
     async ensureFor(target) {
-      if (target === 'slack') {
-        await ensureSlack();
-      } else {
-        await ensureLinear();
+      switch (target) {
+        case 'slack':
+          await ensureSlack();
+          break;
+        case 'linear':
+          await ensureLinear();
+          break;
+        case 'github':
+        default:
+          // No defaults needed for GitHub
+          break;
       }
     },
     snapshot() {
@@ -245,10 +250,9 @@ async function fetchAllSlackUsers(
     const data = asRecord(raw);
     if (data['ok'] !== true) {
       const errRec = asRecord(data);
-      const errMsg = String(
-        (errRec['error'] as string | undefined) ?? 'unknown'
-      );
-      throw new Error(`Slack users.list error: ${errMsg}`);
+      const msgVal = errRec['error'];
+      const msg = typeof msgVal === 'string' && msgVal ? msgVal : 'unknown';
+      throw new Error(`Slack users.list error: ${msg}`);
     }
     const memRaw = data['members'];
     const members = Array.isArray(memRaw) ? (memRaw as unknown[]) : [];
