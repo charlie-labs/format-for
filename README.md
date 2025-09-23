@@ -5,7 +5,7 @@
 
 One Markdown input → clean output for GitHub, Slack, or Linear.
 
-You don’t need to know the input’s dialect. Hand us Markdown that might mix Linear fences, Slack `<url|label>` links/mentions, and GFM. We parse once and render target‑aware output with predictable, safe degradations and explicit warnings.
+You don’t need to know the input’s dialect. Pass Markdown that might mix Linear fences, Slack `<url|label>` links/mentions, and GFM. format‑for parses once and renders target‑aware output with predictable, safe degradations and explicit warnings.
 
 ## Contents
 
@@ -29,6 +29,10 @@ This package is ESM‑first with a CJS fallback and works in Bun or Node.
 bun add format-for
 # or
 npm i format-for
+# or
+yarn add format-for
+# or
+pnpm add format-for
 ```
 
 ## Quick start
@@ -38,7 +42,9 @@ import { formatFor } from 'format-for';
 
 const md = `
 +++ Summary
+
 Collapsible content
+
 +++
 
 See @riley in #dev and <https://example.com|site>.
@@ -49,13 +55,54 @@ const slack = await formatFor.slack(md);
 const linear = await formatFor.linear(md);
 ```
 
+Outputs for the snippet above (exact values):
+
+GitHub
+
+```md
+<details>
+<summary>Summary</summary>
+
+Collapsible content
+
+</details>
+
+See @riley in #dev and [site](https://example.com).
+```
+
+Slack
+
+```
+*Summary*
+> Collapsible content
+See @riley in #dev and <https://example.com|site>.
+```
+
+Linear
+
+```md
++++ Summary
+
+Collapsible content
+
++++
+
+See @riley in #dev and [site](https://example.com).
+```
+
 Prefer to inject live Slack/Linear defaults (real users/channels, org/team autolinks)? Use the factory:
 
 ```ts
 import { createFormatFor, createEnvDefaultsProvider } from 'format-for';
 
 const ff = createFormatFor({
-  defaults: createEnvDefaultsProvider(), // reads SLACK_BOT_TOKEN / LINEAR_API_KEY if present
+  defaults: createEnvDefaultsProvider({
+    // optional: override cache namespace and token/TTL; when not provided,
+    // SLACK_BOT_TOKEN and LINEAR_API_KEY env vars are used by default
+    // namespace: 'my-app:format-for:v1',
+    // slack: { token: 'xoxb-…', ttlMs: 10 * 60_000 },
+    // linear: { apiKey: 'lin_api_…', ttlMs: 60 * 60_000 },
+  }),
 });
 
 const out = await ff.slack('Ping @riley in #dev');
@@ -328,25 +375,6 @@ Footnotes:
 
 </details>
 
-<details>
-<summary><strong>Warnings emitted (example)</strong></summary>
-
-```
-
-Slack: flattened list depth > 2
-Slack: table downgraded to code block
-Slack: images emitted as links
-Slack: HTML stripped
-Slack: footnotes converted to inline caret + appended refs
-Linear: HTML stripped
-Linear: HTML stripped
-
-```
-
-You can silence or redirect warnings; see [FormatOptions](#formatoptions-v1) below.
-
-</details>
-
 ## Concepts
 
 - Parse once → canonical mdast → render per‑target.
@@ -408,7 +436,7 @@ type FormatOptions = {
   target?: {
     slack?: {
       lists?: { maxDepth?: number }; // default: 2
-      images?: { style?: 'link' | 'url'; emptyAltLabel?: string }; // defaults: 'link' / 'image'
+      images?: { style?: 'link' | 'url'; emptyAltLabel?: string }; // defaults: style 'link'; emptyAltLabel 'image'
     };
     github?: { breaks?: 'two-spaces' | 'backslash' }; // default: 'two-spaces'
     // Linear options are intentionally not exposed in v1
