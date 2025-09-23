@@ -52,7 +52,7 @@
     "fast-check": "^4.3.0",
     "husky": "^9.1.7",
     "knip": "^5.63.1",
-    "lint-staged": "^16.1.6",
+    "lint-staged": "^16.2.0",
     "np": "^10.2.0",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
