@@ -22,9 +22,9 @@ export function fixEmptyTaskItems(ast: Root, markdown: string): string {
 
   const lines = markdown.split('\n');
   let i = 0;
-  let inFence = false as boolean;
+  let inFence = false;
   let fenceChar: '`' | '~' | null = null;
-  let fenceLen = 0 as number;
+  let fenceLen = 0;
 
   for (let idx = 0; idx < lines.length && i < empties.length; idx++) {
     const line = lines[idx];
@@ -33,7 +33,8 @@ export function fixEmptyTaskItems(ast: Root, markdown: string): string {
     const fence = /^(\s*(?:>\s*)*)(```+|~~~+)/.exec(String(line));
     if (fence) {
       const token = String(fence[2] ?? '');
-      const ch = (token[0] as '`' | '~') ?? '`';
+      const first = token.charAt(0);
+      const ch: '`' | '~' = first === '~' ? '~' : '`';
       const len = token.length;
       if (!inFence) {
         inFence = true;

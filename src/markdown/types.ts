@@ -51,9 +51,11 @@ export type LinearAllowedHtmlTag = (typeof DEFAULT_LINEAR_HTML_ALLOW)[number];
 export interface FormatOptions {
   maps?: MentionMaps;
   /**
-   * Autolink rules grouped by target. During provider/caller merge, rules are combined per-target.
-   * At parse time, all rules are flattened and applied target-agnostically to the canonical AST.
-   * This means callers can place rules under any key, but keys primarily exist to control merge semantics.
+   * Autolink rules grouped by target. During provider/caller merge, rules are combined per‑target.
+   * At parse time, rules are flattened with target‑preferred ordering (the current
+   * target’s rules are considered first) so that when patterns collide, the
+   * current target’s rule wins. Keys primarily exist to control merge/precedence
+   * semantics; callers may still declare rules under any key.
    */
   autolinks?: Partial<Record<FormatTarget, AutoLinkRule[]>>;
 

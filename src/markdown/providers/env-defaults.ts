@@ -29,6 +29,36 @@ type LinearSnapshotV1 = {
   loadedAt: number; // epoch ms
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function toArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function isSlackSnapshotV1(value: unknown): value is SlackSnapshotV1 {
+  if (!isRecord(value)) return false;
+  const loadedAt = value['loadedAt'];
+  const users = value['users'];
+  const channels = value['channels'];
+  return typeof loadedAt === 'number' && isRecord(users) && isRecord(channels);
+}
+
+function isLinearSnapshotV1(value: unknown): value is LinearSnapshotV1 {
+  if (!isRecord(value)) return false;
+  const loadedAt = value['loadedAt'];
+  const users = value['users'];
+  const teamKeys = value['teamKeys'];
+  return (
+    typeof loadedAt === 'number' && isRecord(users) && Array.isArray(teamKeys)
+  );
+}
+
 export function createEnvDefaultsProvider(cfg?: {
   cache?: Cache;
   namespace?: string;
@@ -71,7 +101,7 @@ export function createEnvDefaultsProvider(cfg?: {
 
     // Try cache
     try {
-      const fromCache = await cache.get<SlackSnapshotV1>(keySlack);
+      const fromCache = await cache.get(keySlack, isSlackSnapshotV1);
       if (fromCache) {
         slackSnap = fromCache;
         const age = Date.now() - fromCache.loadedAt;
@@ -122,7 +152,7 @@ export function createEnvDefaultsProvider(cfg?: {
     if (linearSnap && Date.now() - linearSnap.loadedAt < linearTtl) return;
 
     try {
-      const fromCache = await cache.get<LinearSnapshotV1>(keyLinear);
+      const fromCache = await cache.get(keyLinear, isLinearSnapshotV1);
       if (fromCache) {
         linearSnap = fromCache;
         const age = Date.now() - fromCache.loadedAt;
@@ -249,29 +279,29 @@ async function fetchAllSlackUsers(
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error(`Slack users.list ${res.status}`);
-    const raw = (await res.json()) as unknown;
-    const data = asRecord(raw);
+    const raw: unknown = await res.json();
+    const data = toRecord(raw);
     if (data['ok'] !== true) {
-      const errRec = asRecord(data);
+      const errRec = toRecord(data);
       const msgVal = errRec['error'];
       const msg = typeof msgVal === 'string' && msgVal ? msgVal : 'unknown';
       throw new Error(`Slack users.list error: ${msg}`);
     }
-    const memRaw = data['members'];
-    const members = Array.isArray(memRaw) ? (memRaw as unknown[]) : [];
+    const members = toArray(data['members']);
     for (const mm of members) {
-      const m = asRecord(mm);
+      const m = toRecord(mm);
       const id = String(m['id'] ?? '');
       if (!id) continue;
       const name = String(m['name'] ?? '').trim();
-      const profile = asRecord(m['profile']);
+      const profile = toRecord(m['profile']);
+      const displayNameVal = profile['display_name'];
+      const realNameVal = profile['real_name'];
+      const displayName =
+        typeof displayNameVal === 'string' ? displayNameVal : undefined;
+      const realName =
+        typeof realNameVal === 'string' ? realNameVal : undefined;
       const label =
-        String(
-          (profile['display_name'] as string | undefined) ||
-            (profile['real_name'] as string | undefined) ||
-            name ||
-            ''
-        ).trim() || undefined;
+        String(displayName ?? realName ?? name ?? '').trim() || undefined;
       if (name) users[name] = { id, label };
       // Also map a simple, lowercased handle derived from display name when safe
       if (label) {
@@ -279,7 +309,7 @@ async function fetchAllSlackUsers(
         if (key && !users[key]) users[key] = { id, label };
       }
     }
-    const meta = asRecord(data['response_metadata']);
+    const meta = toRecord(data['response_metadata']);
     const next = String(meta['next_cursor'] ?? '').trim();
     if (!next) break;
     cursor = next;
@@ -301,25 +331,23 @@ async function fetchAllSlackChannels(
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error(`Slack conversations.list ${res.status}`);
-    const raw = (await res.json()) as unknown;
-    const data = asRecord(raw);
+    const raw: unknown = await res.json();
+    const data = toRecord(raw);
     if (data['ok'] !== true) {
-      const errRec = asRecord(data);
-      const errMsg = String(
-        (errRec['error'] as string | undefined) ?? 'unknown'
-      );
-      throw new Error(`Slack conversations.list error: ${errMsg}`);
+      const errRec = toRecord(data);
+      const msgVal = errRec['error'];
+      const errText = typeof msgVal === 'string' && msgVal ? msgVal : 'unknown';
+      throw new Error(`Slack conversations.list error: ${errText}`);
     }
-    const chansRaw = data['channels'];
-    const chans = Array.isArray(chansRaw) ? (chansRaw as unknown[]) : [];
+    const chans = toArray(data['channels']);
     for (const cc of chans) {
-      const c = asRecord(cc);
+      const c = toRecord(cc);
       const id = String(c['id'] ?? '');
       const name = String(c['name'] ?? '').trim();
       if (!id || !name) continue;
       channels[name] = { id, label: `#${name}` };
     }
-    const meta = asRecord(data['response_metadata']);
+    const meta = toRecord(data['response_metadata']);
     const next = String(meta['next_cursor'] ?? '').trim();
     if (!next) break;
     cursor = next;
@@ -349,36 +377,28 @@ async function fetchLinearDefaults(apiKey: string): Promise<{
     body: JSON.stringify({ query: q }),
   });
   if (!res.ok) throw new Error(`Linear GraphQL ${res.status}`);
-  const raw = (await res.json()) as unknown;
-  const body = asRecord(raw);
-  const bodyErrors = Array.isArray(body['errors'])
-    ? (body['errors'] as unknown[])
-    : [];
+  const raw: unknown = await res.json();
+  const body = toRecord(raw);
+  const bodyErrors = toArray(body['errors']);
   if (bodyErrors.length > 0) {
-    const first = asRecord(bodyErrors[0]);
+    const first = toRecord(bodyErrors[0]);
     const msg = String(first['message'] ?? 'unknown');
     throw new Error(`Linear GraphQL error: ${msg}`);
   }
-  const data = asRecord(body['data']);
-  const org = asRecord(data['organization']);
+  const data = toRecord(body['data']);
+  const org = toRecord(data['organization']);
   const orgSlug: string | undefined =
     String(org['slug'] ?? '').trim() || undefined;
-  const teamsRec = asRecord(data['teams']);
-  const teamNodesRaw = teamsRec['nodes'];
-  const teamNodes = Array.isArray(teamNodesRaw)
-    ? (teamNodesRaw as unknown[])
-    : [];
+  const teamsRec = toRecord(data['teams']);
+  const teamNodes = toArray(teamsRec['nodes']);
   const teamKeys: string[] = teamNodes
-    .map((n) => String(asRecord(n)['key'] ?? '').trim())
+    .map((n) => String(toRecord(n)['key'] ?? '').trim())
     .filter((k) => k.length > 0);
-  const usersRec = asRecord(data['users']);
-  const usersNodesRaw = usersRec['nodes'];
-  const usersNodes = Array.isArray(usersNodesRaw)
-    ? (usersNodesRaw as unknown[])
-    : [];
+  const usersRec = toRecord(data['users']);
+  const usersNodes = toArray(usersRec['nodes']);
   const users: Record<string, { url: string; label?: string }> = {};
   for (const uu of usersNodes) {
-    const u = asRecord(uu);
+    const u = toRecord(uu);
     const url = String(u['url'] ?? '').trim();
     const name = String(u['name'] ?? '').trim();
     const display = String(u['displayName'] ?? '').trim();
@@ -392,10 +412,4 @@ async function fetchLinearDefaults(apiKey: string): Promise<{
     if (first && !users[first]) users[first] = { url, label };
   }
   return { orgSlug, teamKeys, users };
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-    ? (value as Record<string, unknown>)
-    : {};
 }

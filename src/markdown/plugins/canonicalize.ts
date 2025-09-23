@@ -371,8 +371,8 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 
 function isListItemNode(node: unknown): node is ListItem {
   if (typeof node !== 'object' || node == null) return false;
-  const t = (node as { type?: unknown }).type;
-  return t === 'listItem';
+  const t = Reflect.get(node, 'type');
+  return typeof t === 'string' && t === 'listItem';
 }
 
 function canonicalizeDetailsInParent(parent: Parent): void {
