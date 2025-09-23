@@ -16,6 +16,12 @@ function errMsg(err: unknown): string {
   }
 }
 
+/**
+ * Safety cap for Slack pagination to avoid infinite loops when cursors misbehave.
+ * Applied consistently across users/channels pagination.
+ */
+const SLACK_MAX_PAGES = 50;
+
 type SlackSnapshotV1 = {
   users: Record<string, { id: string; label?: string }>;
   channels: Record<string, { id: string; label?: string }>;
@@ -271,7 +277,7 @@ async function fetchAllSlackUsers(
 ): Promise<SlackSnapshotV1['users']> {
   const users: Record<string, { id: string; label?: string }> = {};
   let cursor: string | undefined;
-  for (let page = 0; page < 50; page++) {
+  for (let page = 0; page < SLACK_MAX_PAGES; page++) {
     const url = new URL('https://slack.com/api/users.list');
     url.searchParams.set('limit', '200');
     if (cursor) url.searchParams.set('cursor', cursor);
@@ -322,7 +328,7 @@ async function fetchAllSlackChannels(
 ): Promise<SlackSnapshotV1['channels']> {
   const channels: Record<string, { id: string; label?: string }> = {};
   let cursor: string | undefined;
-  for (let page = 0; page < 50; page++) {
+  for (let page = 0; page < SLACK_MAX_PAGES; page++) {
     const url = new URL('https://slack.com/api/conversations.list');
     url.searchParams.set('limit', '200');
     url.searchParams.set('types', 'public_channel,private_channel');

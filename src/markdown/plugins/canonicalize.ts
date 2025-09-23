@@ -369,10 +369,13 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   };
 };
 
+function hasTypeField(v: unknown): v is { type: unknown } {
+  return typeof v === 'object' && v !== null && 'type' in v;
+}
+
 function isListItemNode(node: unknown): node is ListItem {
-  if (typeof node !== 'object' || node == null) return false;
-  const t = Reflect.get(node, 'type');
-  return typeof t === 'string' && t === 'listItem';
+  if (!hasTypeField(node)) return false;
+  return typeof node.type === 'string' && node.type === 'listItem';
 }
 
 function canonicalizeDetailsInParent(parent: Parent): void {
