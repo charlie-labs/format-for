@@ -254,8 +254,10 @@ function renderInline(
     if (c.type === 'mention') {
       if (c.data?.subtype === 'user' && c.data.id) {
         s += `<@${c.data.id}>`;
-      } else if (c.data?.subtype === 'channel' && c.data.id && c.data.label) {
-        s += `<#${c.data.id}|${c.data.label}>`;
+      } else if (c.data?.subtype === 'channel' && c.data.id) {
+        s += c.data.label
+          ? `<#${c.data.id}|${c.data.label}>`
+          : `<#${c.data.id}>`;
       } else if (c.data?.subtype === 'special' && c.data.id) {
         s += `<!${c.data.id}>`;
       } else {

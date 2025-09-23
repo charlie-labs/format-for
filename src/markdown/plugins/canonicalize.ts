@@ -13,6 +13,7 @@ import { CONTINUE, visit } from 'unist-util-visit';
 import {
   type AutoLinkRule,
   type DetailsNode,
+  type FormatTarget,
   type MentionMaps,
   type MentionNode,
 } from '../types.js';
@@ -30,6 +31,7 @@ import {
  *    therefore not considered here).
  */
 export type CanonicalizeOptions = {
+  target?: FormatTarget;
   maps?: MentionMaps;
   autolinks?: AutoLinkRule[];
 };
@@ -37,8 +39,10 @@ export type CanonicalizeOptions = {
 export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   opts?: CanonicalizeOptions
 ) => {
+  const target = opts?.target;
   const maps = opts?.maps ?? {};
   const linearUsers = maps.linear?.users ?? {};
+  const slackUsers = maps.slack?.users ?? {};
   const autolinks = opts?.autolinks ?? [];
 
   return (root: Root) => {
@@ -212,18 +216,37 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
               children: [{ type: 'text', value: label }],
             });
           } else if (m[9]) {
-            // @user (Linear mapping)
-            const key = m[9];
-            const hit = linearUsers[key];
-            if (hit?.url) {
-              fragments.push({
-                type: 'link',
-                url: hit.url,
-                title: null,
-                children: [{ type: 'text', value: hit.label ?? `@${key}` }],
-              });
+            // @user → choose by target when known; Slack emits mentions, others link
+            const key = m[9].toLowerCase();
+            if (target === 'slack') {
+              const slackHit = slackUsers[key];
+              if (slackHit?.id) {
+                const mention: MentionNode = {
+                  type: 'mention',
+                  data: {
+                    subtype: 'user',
+                    id: slackHit.id,
+                    label: slackHit.label,
+                  },
+                  children: [],
+                };
+                fragments.push(mention);
+              } else {
+                // On Slack we ignore Linear lookups for @user when no Slack match exists
+                fragments.push({ type: 'text', value: whole });
+              }
             } else {
-              fragments.push({ type: 'text', value: whole });
+              const hit = linearUsers[key];
+              if (hit?.url) {
+                fragments.push({
+                  type: 'link',
+                  url: hit.url,
+                  title: null,
+                  children: [{ type: 'text', value: hit.label ?? `@${key}` }],
+                });
+              } else {
+                fragments.push({ type: 'text', value: whole });
+              }
             }
           }
           lastIndex = re.lastIndex;

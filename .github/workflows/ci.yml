@@ -8,6 +8,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Expose read-only API tokens to the test job so env-gated integration
+      # tests (Vitest) actually execute in CI. Secrets are defined at the repo level.
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
     steps:
       - uses: actions/checkout@v5
 

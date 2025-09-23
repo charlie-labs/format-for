@@ -180,8 +180,8 @@ export function renderLinear(
   };
 
   const out = unified()
-    .use(remarkStringify, stringifyOpts)
     .use(remarkGfm)
+    .use(remarkStringify, stringifyOpts)
     .stringify(cloned);
 
   return fixEmptyTaskItems(cloned, out);
@@ -234,4 +234,4 @@ function closingTagName(s: string): string | null {
   return name ? name.toLowerCase() : null;
 }
 
-// shared util imported
+//
