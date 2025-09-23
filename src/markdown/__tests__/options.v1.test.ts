@@ -173,4 +173,27 @@ describe('v1 options: warnings + target knobs + factory defaults', () => {
     });
     expect(out).toContain('[ABC-42](https://x/A42)');
   });
+
+  test('Slack images: missing/empty URL falls back to label for both styles', () => {
+    const ast = root([
+      { type: 'image', url: '', alt: 'Block' },
+      {
+        type: 'paragraph',
+        children: [{ type: 'image', url: '   ', alt: 'Inline' }],
+      },
+    ]);
+    const link = renderSlack(ast, {
+      target: { slack: { images: { style: 'link' } } },
+    });
+    expect(link).toContain('Block');
+    expect(link).toContain('Inline');
+    expect(link).not.toContain('<|');
+
+    const urlStyle = renderSlack(ast, {
+      target: { slack: { images: { style: 'url' } } },
+    });
+    expect(urlStyle).toContain('Block');
+    expect(urlStyle).toContain('Inline');
+    expect(urlStyle).not.toContain('<|');
+  });
 });

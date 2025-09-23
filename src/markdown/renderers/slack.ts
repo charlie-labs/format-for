@@ -76,11 +76,19 @@ function formatSlackImage(
     options?.target?.slack?.images?.emptyAltLabel ?? 'image';
   const altText = (alt ?? '').trim();
   const labelRaw = altText.length > 0 ? altText : emptyAltLabel;
+
+  // Normalize URL (trim) and check presence
+  const urlStr = typeof url === 'string' ? url.trim() : '';
+  const hasUrl = urlStr.length > 0;
+
+  // Without a URL, avoid emitting an invalid Slack link token like `<|label>`
+  if (!hasUrl) return escapeSlackLabel(labelRaw);
+
   if (style === 'url') {
-    return String(url ?? '');
+    return urlStr;
   }
   const label = escapeSlackLabel(labelRaw);
-  return `<${url ?? ''}|${label}>`;
+  return `<${urlStr}|${label}>`;
 }
 
 function renderNodes(
