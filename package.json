@@ -57,7 +57,8 @@
   },
   "packageManager": "bun@1.2.22",
   "engines": {
-    "bun": "1"
+    "node": ">=22",
+    "bun": ">=1.2"
   },
   "files": [
     "dist"
@@ -72,6 +73,18 @@
       "require": "./dist/index.cjs"
     }
   },
+  "keywords": [
+    "markdown",
+    "formatter",
+    "github",
+    "slack",
+    "linear",
+    "unified",
+    "remark",
+    "mdast",
+    "markdown-to-slack",
+    "markdown-to-github"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/charlie-labs/format-for.git"
