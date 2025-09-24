@@ -23,22 +23,22 @@ You don’t need to know the input’s dialect. Pass Markdown that might mix Lin
 
 ## Install
 
-This package is ESM‑first with a CJS fallback and works in Bun or Node.
+This package is ESM‑first with a CJS fallback and works in Node 22+ and Bun 1.2+.
 
 ```bash
-bun add format-for
+bun add @charlie-labs/format-for
 # or
-npm i format-for
+npm i @charlie-labs/format-for
 # or
-yarn add format-for
+yarn add @charlie-labs/format-for
 # or
-pnpm add format-for
+pnpm add @charlie-labs/format-for
 ```
 
 ## Quick start
 
 ```ts
-import { formatFor } from 'format-for';
+import { formatFor } from '@charlie-labs/format-for';
 
 const md = `
 +++ Summary
@@ -93,7 +93,10 @@ See @riley in #dev and [site](https://example.com).
 Prefer to inject live Slack/Linear defaults (real users/channels, org/team autolinks)? Use the factory:
 
 ```ts
-import { createFormatFor, createEnvDefaultsProvider } from 'format-for';
+import {
+  createFormatFor,
+  createEnvDefaultsProvider,
+} from '@charlie-labs/format-for';
 
 const ff = createFormatFor({
   defaults: createEnvDefaultsProvider({
@@ -395,7 +398,10 @@ Each returns a `Promise<string>` with the formatted value for that target.
 ### Factory and env defaults
 
 ```ts
-import { createFormatFor, createEnvDefaultsProvider } from 'format-for';
+import {
+  createFormatFor,
+  createEnvDefaultsProvider,
+} from '@charlie-labs/format-for';
 
 const ff = createFormatFor({
   defaults: createEnvDefaultsProvider({
