@@ -1,0 +1,7 @@
+A fenced code block with a language should drop the language in Slack output only.
+
+```
+// some code
+console.log('hello');
+```
+
