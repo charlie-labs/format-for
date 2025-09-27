@@ -129,8 +129,8 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
       for (let i = 0; i < parent.children.length - 2; i++) {
         const a = parent.children[i];
         const b = parent.children[i + 1];
-        const c = parent.children[i + 2];
-        if (!a || !b || !c) continue;
+        // Ensure the next sibling exists as well since we access from i+2 onward during scanning.
+        if (!a || !b || !parent.children[i + 2]) continue;
         if (a.type !== 'text' || b.type !== 'link') continue;
         const aVal = String(a.value ?? '');
         // Only consider when the left text ends with a literal '<' (no trailing whitespace)
@@ -237,18 +237,25 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           }
         }
         if (anchor === -1) continue;
-        const prevText =
-          i > 0 && ch[i - 1]?.type === 'text'
-            ? String((ch[i - 1] as Text).value ?? '')
-            : '';
+        // Use a narrowing guard instead of a cast to comply with the "no `as` in production" rule
+        let prevText = '';
+        if (i > 0) {
+          const maybePrev = ch[i - 1];
+          if (maybePrev && maybePrev.type === 'text') {
+            prevText = String(maybePrev.value ?? '');
+          }
+        }
         const curText = toString(cur);
         const anchorNode = ch[anchor];
         if (!anchorNode || anchorNode.type !== 'link') continue;
         const anchorLink = anchorNode;
         const anchorLabel = toString(anchorNode);
-        // Only proceed when nearby text looks like a Slack label fragment
-        const glue = prevText + curText;
-        if (!glue.includes('|')) continue;
+        // Only proceed when nearby text clearly looks like a Slack label fragment.
+        // Require the '|' delimiter to be adjacent: either the preceding text ends
+        // with '|' (ignoring trailing whitespace) or the fragment text itself contains '|'.
+        const prevEndsWithPipe = prevText.trimEnd().endsWith('|');
+        const nextStartsWithPipe = curText.trimStart().startsWith('|');
+        if (!(prevEndsWithPipe || nextStartsWithPipe)) continue;
         const combined = anchorLabel + prevText + curText;
 
         anchorLink.children = [{ type: 'text', value: combined }];
