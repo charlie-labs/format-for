@@ -11,7 +11,7 @@ import {
 } from 'mdast';
 import { toString } from 'mdast-util-to-string';
 import { type Plugin } from 'unified';
-import { CONTINUE, visit } from 'unist-util-visit';
+import { CONTINUE, EXIT, SKIP, visit } from 'unist-util-visit';
 
 import {
   type AutoLinkRule,
@@ -75,18 +75,39 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   }
   const autolinks = opts?.autolinks ?? [];
 
-  return (root: Root) => {
-    // 0) Input flavor detection (auto): if we see clearly Slack-only tokens
-    //    in the raw source, treat single-asterisk emphasis as bold.
-    const isSlackInput =
-      source.length > 0 &&
-      // Slack-only user/channel/special mentions
-      /<(?:@U[A-Z0-9]+(?:\|[^>]+)?|#C[A-Z0-9]+(?:\|[^>]+)?|!(?:here|channel|everyone)(?:\|[^>]+)?)>/.test(
-        source
-      )
-        ? true
-        : // Slack angle link with a URL on the left side (scheme or protocol-relative)
-          /<(?:(?:[a-z][a-z0-9+.-]*:)|\/\/)[^>|]+\|[^>]+>/.test(source);
+  return (root: Root): void => {
+    // 0) Input flavor detection (auto): If we see clearly Slack-only tokens
+    //    in non-code nodes, treat single-asterisk emphasis as bold.
+    //    We avoid scanning the raw source to prevent false positives from
+    //    code fences/inline code.
+    const slackMention =
+      /<(?:@(?:U|W)[A-Z0-9]+(?:\|[^>]+)?|#(?:C|G)[A-Z0-9]+(?:\|[^>]+)?|!(?:here|channel|everyone)(?:\|[^>]+)?|!subteam\^S[A-Z0-9]+(?:\|[^>]+)?)>/;
+    const slackAngleLink = /<(?:(?:[a-z][a-z0-9+.-]*:)|\/\/)[^>|]+\|[^>]+>/i; // case-insensitive scheme
+
+    let isSlackInput = false;
+    visit(root, (node) => {
+      if (isSlackInput) return EXIT;
+      // Skip entire subtrees of code/inlineCode
+      if (node.type === 'code' || node.type === 'inlineCode') return SKIP;
+      if (isTextLike(node)) {
+        const v = String(node.value ?? '');
+        if (slackMention.test(v) || slackAngleLink.test(v)) {
+          isSlackInput = true;
+          return EXIT;
+        }
+      } else if (isLinkNode(node)) {
+        // remark-parse sometimes turns `<url|label>` into a link whose URL contains a pipe
+        const url = String(node.url ?? '');
+        if (
+          url.includes('|') &&
+          (/^(?:[a-z][a-z0-9+.-]*:)/i.test(url) || url.startsWith('//'))
+        ) {
+          isSlackInput = true;
+          return EXIT;
+        }
+      }
+      return CONTINUE;
+    });
 
     if (isSlackInput) {
       // Promote emphasis nodes whose delimiters are literal '*' to strong.
@@ -646,6 +667,27 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 
 function hasTypeField(v: unknown): v is { type: unknown } {
   return typeof v === 'object' && v !== null && 'type' in v;
+}
+
+function isTextLike(node: unknown): node is Text | Html {
+  return (
+    typeof node === 'object' &&
+    node !== null &&
+    hasTypeField(node) &&
+    (node.type === 'text' || node.type === 'html') &&
+    'value' in node
+  );
+}
+
+function hasProp<K extends string>(
+  obj: unknown,
+  prop: K
+): obj is Record<K, unknown> {
+  return typeof obj === 'object' && obj !== null && prop in obj;
+}
+
+function isLinkNode(node: unknown): node is Link {
+  return hasTypeField(node) && node.type === 'link' && hasProp(node, 'url');
 }
 
 function isListItemNode(node: unknown): node is ListItem {
