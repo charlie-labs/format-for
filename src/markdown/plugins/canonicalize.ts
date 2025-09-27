@@ -1,15 +1,17 @@
 import {
+  type Emphasis,
   type Html,
   type Link,
   type ListItem,
   type Parent,
   type PhrasingContent,
   type Root,
+  type Strong,
   type Text,
 } from 'mdast';
 import { toString } from 'mdast-util-to-string';
 import { type Plugin } from 'unified';
-import { CONTINUE, visit } from 'unist-util-visit';
+import { CONTINUE, EXIT, SKIP, visit } from 'unist-util-visit';
 
 import {
   type AutoLinkRule,
@@ -35,6 +37,14 @@ export type CanonicalizeOptions = {
   maps?: MentionMaps;
   autolinks?: AutoLinkRule[];
   /**
+   * Original input source (optional). When provided, we can make
+   * position-aware decisions based on the raw delimiters. Used to
+   * detect Slack-formatted input and to promote star-delimited
+   * emphasis (`*text*`) to bold when the source clearly uses Slack
+   * conventions.
+   */
+  source?: string;
+  /**
    * Target-aware tweaks (optional). When provided, bare "@user" resolution will:
    *  - on Slack: use Slack `maps.slack.users` to emit a real mention (<@U…>)
    *  - on GitHub/Linear: use Linear `maps.linear.users` to emit a link to the profile
@@ -48,6 +58,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 ) => {
   const maps = opts?.maps ?? {};
   const target: FormatTarget | undefined = opts?.target;
+  const source = String(opts?.source ?? '');
   const linearUsers = maps.linear?.users ?? {};
   const slackUsers = maps.slack?.users ?? {};
 
@@ -64,7 +75,63 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   }
   const autolinks = opts?.autolinks ?? [];
 
-  return (root: Root) => {
+  return (root: Root): void => {
+    // 0) Input flavor detection (auto): If we see clearly Slack-only tokens
+    //    in non-code nodes, treat single-asterisk emphasis as bold.
+    //    We avoid scanning the raw source to prevent false positives from
+    //    code fences/inline code.
+    const slackMention =
+      /<(?:@(?:U|W)[A-Z0-9]+(?:\|[^>]+)?|#(?:C|G)[A-Z0-9]+(?:\|[^>]+)?|!(?:here|channel|everyone)(?:\|[^>]+)?|!subteam\^S[A-Z0-9]+(?:\|[^>]+)?)>/;
+    const slackAngleLink = /<(?:(?:[a-z][a-z0-9+.-]*:)|\/\/)[^>|]+\|[^>]+>/i; // case-insensitive scheme
+
+    let isSlackInput = false;
+    visit(root, (node) => {
+      if (isSlackInput) return EXIT;
+      // Skip entire subtrees of code/inlineCode
+      if (node.type === 'code' || node.type === 'inlineCode') return SKIP;
+      if (isTextLike(node)) {
+        const v = String(node.value ?? '');
+        if (slackMention.test(v) || slackAngleLink.test(v)) {
+          isSlackInput = true;
+          return EXIT;
+        }
+      } else if (isLinkNode(node)) {
+        // remark-parse sometimes turns `<url|label>` into a link whose URL contains a pipe
+        const url = String(node.url ?? '');
+        if (
+          url.includes('|') &&
+          (/^(?:[a-z][a-z0-9+.-]*:)/i.test(url) || url.startsWith('//'))
+        ) {
+          isSlackInput = true;
+          return EXIT;
+        }
+      }
+      return CONTINUE;
+    });
+
+    if (isSlackInput) {
+      // Promote emphasis nodes whose delimiters are literal '*' to strong.
+      // We rely on node.position offsets pointing at the original markers.
+      visit(root, 'emphasis', (node: Emphasis, index, parent) => {
+        if (!parent || typeof index !== 'number') return;
+        const start = node?.position?.start?.offset;
+        const end = node?.position?.end?.offset;
+        if (typeof start !== 'number' || typeof end !== 'number') return;
+        if (start < 0 || end <= start) return;
+        const open = source.slice(start, start + 1);
+        const close = source.slice(end - 1, end);
+        if (open === '*' && close === '*') {
+          const replacement: Strong = {
+            type: 'strong',
+            children: node.children,
+            position: node.position,
+          };
+          parent.children.splice(index, 1, replacement);
+          return CONTINUE;
+        }
+      });
+    }
+
     // Helper: URL looks absolute (scheme or protocol-relative)
     const hasScheme = (u: string): boolean =>
       /^(?:[a-z][a-z0-9+.-]*:)/i.test(u) || u.startsWith('//');
@@ -600,6 +667,27 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 
 function hasTypeField(v: unknown): v is { type: unknown } {
   return typeof v === 'object' && v !== null && 'type' in v;
+}
+
+function isTextLike(node: unknown): node is Text | Html {
+  return (
+    typeof node === 'object' &&
+    node !== null &&
+    hasTypeField(node) &&
+    (node.type === 'text' || node.type === 'html') &&
+    'value' in node
+  );
+}
+
+function hasProp<K extends string>(
+  obj: unknown,
+  prop: K
+): obj is Record<K, unknown> {
+  return typeof obj === 'object' && obj !== null && prop in obj;
+}
+
+function isLinkNode(node: unknown): node is Link {
+  return hasTypeField(node) && node.type === 'link' && hasProp(node, 'url');
 }
 
 function isListItemNode(node: unknown): node is ListItem {
