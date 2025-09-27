@@ -1,10 +1,12 @@
 import {
+  type Emphasis,
   type Html,
   type Link,
   type ListItem,
   type Parent,
   type PhrasingContent,
   type Root,
+  type Strong,
   type Text,
 } from 'mdast';
 import { toString } from 'mdast-util-to-string';
@@ -35,6 +37,14 @@ export type CanonicalizeOptions = {
   maps?: MentionMaps;
   autolinks?: AutoLinkRule[];
   /**
+   * Original input source (optional). When provided, we can make
+   * position-aware decisions based on the raw delimiters. Used to
+   * detect Slack-formatted input and to promote star-delimited
+   * emphasis (`*text*`) to bold when the source clearly uses Slack
+   * conventions.
+   */
+  source?: string;
+  /**
    * Target-aware tweaks (optional). When provided, bare "@user" resolution will:
    *  - on Slack: use Slack `maps.slack.users` to emit a real mention (<@U…>)
    *  - on GitHub/Linear: use Linear `maps.linear.users` to emit a link to the profile
@@ -48,6 +58,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 ) => {
   const maps = opts?.maps ?? {};
   const target: FormatTarget | undefined = opts?.target;
+  const source = String(opts?.source ?? '');
   const linearUsers = maps.linear?.users ?? {};
   const slackUsers = maps.slack?.users ?? {};
 
@@ -65,6 +76,41 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   const autolinks = opts?.autolinks ?? [];
 
   return (root: Root) => {
+    // 0) Input flavor detection (auto): if we see clearly Slack-only tokens
+    //    in the raw source, treat single-asterisk emphasis as bold.
+    const isSlackInput =
+      source.length > 0 &&
+      // Slack-only user/channel/special mentions
+      /<(?:@U[A-Z0-9]+(?:\|[^>]+)?|#C[A-Z0-9]+(?:\|[^>]+)?|!(?:here|channel|everyone)(?:\|[^>]+)?)>/.test(
+        source
+      )
+        ? true
+        : // Slack angle link with a URL on the left side (scheme or protocol-relative)
+          /<(?:(?:[a-z][a-z0-9+.-]*:)|\/\/)[^>|]+\|[^>]+>/.test(source);
+
+    if (isSlackInput) {
+      // Promote emphasis nodes whose delimiters are literal '*' to strong.
+      // We rely on node.position offsets pointing at the original markers.
+      visit(root, 'emphasis', (node: Emphasis, index, parent) => {
+        if (!parent || typeof index !== 'number') return;
+        const start = node?.position?.start?.offset;
+        const end = node?.position?.end?.offset;
+        if (typeof start !== 'number' || typeof end !== 'number') return;
+        if (start < 0 || end <= start) return;
+        const open = source.slice(start, start + 1);
+        const close = source.slice(end - 1, end);
+        if (open === '*' && close === '*') {
+          const replacement: Strong = {
+            type: 'strong',
+            children: node.children,
+            position: node.position,
+          };
+          parent.children.splice(index, 1, replacement);
+          return CONTINUE;
+        }
+      });
+    }
+
     // Helper: URL looks absolute (scheme or protocol-relative)
     const hasScheme = (u: string): boolean =>
       /^(?:[a-z][a-z0-9+.-]*:)/i.test(u) || u.startsWith('//');

@@ -31,6 +31,9 @@ export function parseToCanonicalMdast(
     .use(remarkCanonicalizeMixed, {
       maps: opts.maps ?? {},
       autolinks: opts.autolinks ?? [],
+      // Provide the raw source so the canonicalizer can make
+      // position-aware decisions (e.g., Slack input flavor detection).
+      source: input,
       target: opts.target,
     })
     // Replace literal "\n" with `break` nodes (hard line breaks), skipping code.
