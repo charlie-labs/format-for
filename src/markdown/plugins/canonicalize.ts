@@ -9,7 +9,6 @@ import {
 } from 'mdast';
 import { toString } from 'mdast-util-to-string';
 import { type Plugin } from 'unified';
-import { type Node as UnistNode } from 'unist';
 import { CONTINUE, visit } from 'unist-util-visit';
 
 import {
@@ -66,31 +65,55 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
   const autolinks = opts?.autolinks ?? [];
 
   return (root: Root) => {
+    // Helper: URL looks absolute (scheme or protocol-relative)
+    const hasScheme = (u: string): boolean =>
+      /^(?:[a-z][a-z0-9+.-]*:)/i.test(u) || u.startsWith('//');
+
+    // Helper: visit both paragraph and heading blocks
+    const visitBlocks = (fn: (parent: Parent) => void): void => {
+      visit(root, 'paragraph', (node: Parent) => {
+        fn(node);
+        return CONTINUE;
+      });
+      visit(root, 'heading', (node: Parent) => {
+        fn(node);
+        return CONTINUE;
+      });
+    };
+
+    // Track parents that participated in Slack angle-link merges so later
+    // cleanup passes only touch related content.
+    const slackAngleParents = new WeakSet<Parent>();
     // 0) Pre-pass: fix Slack-style autolinks that `remark-parse` mis-parses as a
     //    single link node whose URL contains a pipe. Example input:
     //      "<https://a.co|A>" → link { url: 'https://a.co|A', text: 'https://a.co|A' }
     //    We want a proper mdast link: url: 'https://a.co', children: [Text('A')]
-    visit(root, 'link', (node: Link) => {
-      const url = String(node.url ?? '');
-      if (!url.includes('|')) return;
-      // Only fix the specific mis-parse shape produced by remark for `<url|label>`:
-      // a link whose single text child equals the URL string.
-      if (
-        node.children.length !== 1 ||
-        node.children[0]?.type !== 'text' ||
-        String(node.children[0].value ?? '') !== url
-      ) {
-        return;
+    visit(
+      root,
+      'link',
+      (node: Link, _index: number | undefined, parent: Parent | undefined) => {
+        const url = String(node.url ?? '');
+        if (!url.includes('|')) return;
+        // Only fix the specific mis-parse shape produced by remark for `<url|label>`:
+        // a link whose single text child equals the URL string.
+        if (
+          node.children.length !== 1 ||
+          node.children[0]?.type !== 'text' ||
+          String(node.children[0].value ?? '') !== url
+        ) {
+          return;
+        }
+        // '|' is not valid in URLs; treat the first '|' as Slack label separator
+        const parts = url.split('|', 2);
+        const u = parts[0] ?? url;
+        const labelRaw = parts[1];
+        const label = (labelRaw ?? u).trim();
+        node.url = u;
+        node.title = null;
+        node.children = [{ type: 'text', value: label }];
+        if (parent) slackAngleParents.add(parent);
       }
-      // '|' is not valid in URLs; treat the first '|' as Slack label separator
-      const parts = url.split('|', 2);
-      const u = parts[0] ?? url;
-      const labelRaw = parts[1];
-      const label = (labelRaw ?? u).trim();
-      node.url = u;
-      node.title = null;
-      node.children = [{ type: 'text', value: label }];
-    });
+    );
 
     // 1) Block-level: '+++ Title' ... '+++' → details (with nesting)
     canonicalizeDetailsInParent(root);
@@ -116,6 +139,8 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         const prefix = aVal.slice(0, -1); // text before '<'
         const url = String(b.url ?? '');
         if (!url) continue;
+        // Only consider true/absolute URLs to avoid merging relative/hash links
+        if (!hasScheme(url)) continue;
 
         // Accumulate label fragments from the initial link and following siblings
         let labelBuf = toString(b);
@@ -149,7 +174,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
           }
           // For any non-text node (including nested links/emphasis),
           // append its human-readable text content into the label.
-          labelBuf += toString(cur as UnistNode);
+          labelBuf += toString(cur);
         }
 
         if (!foundClose) continue; // give up if we never saw a closing '>'
@@ -169,19 +194,15 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         // Replace the range [i..j] (inclusive) with the compact sequence
         parent.children.splice(i, j - i + 1, ...replacement);
 
+        // Mark this parent as having Slack angle-link activity
+        slackAngleParents.add(parent);
+
         // Advance to the next starting position without skipping a potential
         // immediately-following pattern (e.g., two angle links in one line).
         i += Math.max(0, replacement.length - 2);
       }
     };
-    visit(root, 'paragraph', (node: Parent) => {
-      mergeInParent(node);
-      return CONTINUE;
-    });
-    visit(root, 'heading', (node: Parent) => {
-      mergeInParent(node);
-      return CONTINUE;
-    });
+    visitBlocks(mergeInParent);
 
     // 1.3) Merge dangling label fragments that remark sometimes turns into a
     //      bogus `link` with a non-URL `url` (e.g., from sequences like
@@ -189,9 +210,13 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
     //      see a `link` whose url lacks a scheme, treat it as plain text and
     //      append it (plus any immediately-preceding text) to the previous
     //      proper link's label.
-    const hasScheme = (u: string): boolean =>
-      /^(?:[a-z][a-z0-9+.-]*:)/i.test(u);
     const appendToPrevLink = (parent: Parent): void => {
+      // Operate only on blocks that either participated in a merge,
+      // or clearly contain Slack-angle label syntax.
+      if (!slackAngleParents.has(parent)) {
+        const blockText = toString(parent);
+        if (!blockText.includes('|')) return;
+      }
       const ch = parent.children;
       for (let i = 0; i < ch.length; i++) {
         const cur = ch[i];
@@ -217,8 +242,13 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
             ? String((ch[i - 1] as Text).value ?? '')
             : '';
         const curText = toString(cur);
-        const anchorLink = ch[anchor] as Link;
-        const anchorLabel = toString(anchorLink);
+        const anchorNode = ch[anchor];
+        if (!anchorNode || anchorNode.type !== 'link') continue;
+        const anchorLink = anchorNode;
+        const anchorLabel = toString(anchorNode);
+        // Only proceed when nearby text looks like a Slack label fragment
+        const glue = prevText + curText;
+        if (!glue.includes('|')) continue;
         const combined = anchorLabel + prevText + curText;
 
         anchorLink.children = [{ type: 'text', value: combined }];
@@ -230,20 +260,19 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         i = Math.max(0, deleteIndex - 1);
       }
     };
-    visit(root, 'paragraph', (node: Parent) => {
-      appendToPrevLink(node);
-      return CONTINUE;
-    });
-    visit(root, 'heading', (node: Parent) => {
-      appendToPrevLink(node);
-      return CONTINUE;
-    });
+    visitBlocks(appendToPrevLink);
 
     // 1.35) If a proper link is followed by text that looks like a leftover
     //        Slack-angle tail (e.g., " C < D | E>"), append that text (minus the
     //        trailing '>') to the link label. This addresses labels containing
     //        raw '<', '>' and '|' that confused the initial parse.
     const appendAngleTail = (parent: Parent): void => {
+      // Operate only on blocks that either participated in a merge,
+      // or clearly contain Slack-angle label syntax.
+      if (!slackAngleParents.has(parent)) {
+        const blockText = toString(parent);
+        if (!blockText.includes('|')) return;
+      }
       const ch = parent.children;
       for (let i = 0; i < ch.length - 1; i++) {
         const cur = ch[i];
@@ -271,14 +300,7 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         i = Math.max(0, i - 1);
       }
     };
-    visit(root, 'paragraph', (node: Parent) => {
-      appendAngleTail(node);
-      return CONTINUE;
-    });
-    visit(root, 'heading', (node: Parent) => {
-      appendAngleTail(node);
-      return CONTINUE;
-    });
+    visitBlocks(appendAngleTail);
 
     // 1.5) Convert Slack specials (and defensively, other Slack angle forms) that
     // were parsed as `html` nodes into canonical `mention` nodes so renderers can
