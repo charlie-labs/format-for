@@ -158,4 +158,47 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
     const out = renderLinear(ast, { allowHtml: [] });
     expect(out).toContain('#C999');
   });
+
+  test('does not merge a nearby relative/hash link into a prior absolute link even when a pipe is adjacent', () => {
+    // Paragraph shape:
+    // [Ex](https://ex.com) + text(" unrelated ") + text(" | ") + [Docs](/docs)
+    // The cleanup pass for Slack angle-link fragments must NOT treat the
+    // relative link as a dangling fragment to append to the earlier absolute link.
+    const ast: Root = {
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            {
+              type: 'link',
+              url: 'https://ex.com',
+              title: null,
+              children: [{ type: 'text', value: 'Ex' }],
+            },
+            { type: 'text', value: ' unrelated ' },
+            { type: 'text', value: ' | ' },
+            {
+              type: 'link',
+              url: '/docs',
+              title: null,
+              children: [{ type: 'text', value: 'Docs' }],
+            },
+          ],
+        },
+      ],
+    } as any;
+
+    const out = unified().use(remarkCanonicalizeMixed).runSync(ast) as Root;
+    const p = out.children[0];
+    expect(p && p.type === 'paragraph').toBe(true);
+    if (p && p.type === 'paragraph') {
+      const links = p.children.filter((n) => n.type === 'link') as any[];
+      expect(links.length).toBe(2);
+      expect(links[0].url).toBe('https://ex.com');
+      expect(links[0].children[0].value).toBe('Ex');
+      expect(links[1].url).toBe('/docs');
+      expect(links[1].children[0].value).toBe('Docs');
+    }
+  });
 });

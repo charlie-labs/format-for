@@ -225,23 +225,38 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         if (hasScheme(url)) continue; // only handle dangling/non-URL links
         // Find previous proper link to attach to
         let anchor = -1;
-        for (let j = i - 1; j >= 0; j--) {
-          const prev = ch[j];
+        // Restrict the anchor to be adjacent (or near‑adjacent with a single text node between)
+        if (i > 0) {
+          const prev1 = ch[i - 1];
           if (
-            prev &&
-            prev.type === 'link' &&
-            hasScheme(String(prev.url ?? ''))
+            prev1 &&
+            prev1.type === 'link' &&
+            hasScheme(String(prev1.url ?? ''))
           ) {
-            anchor = j;
-            break;
+            anchor = i - 1;
+          }
+        }
+        if (anchor === -1 && i > 1) {
+          const prev2 = ch[i - 2];
+          const between = ch[i - 1];
+          if (
+            prev2 &&
+            prev2.type === 'link' &&
+            between &&
+            between.type === 'text' &&
+            hasScheme(String(prev2.url ?? ''))
+          ) {
+            anchor = i - 2;
           }
         }
         if (anchor === -1) continue;
         // Use a narrowing guard instead of a cast to comply with the "no `as` in production" rule
         let prevText = '';
+        let hasPrevTextNode = false;
         if (i > 0) {
           const maybePrev = ch[i - 1];
           if (maybePrev && maybePrev.type === 'text') {
+            hasPrevTextNode = true;
             prevText = String(maybePrev.value ?? '');
           }
         }
@@ -260,8 +275,8 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 
         anchorLink.children = [{ type: 'text', value: combined }];
         // Remove the consumed nodes (optional preceding text + current bogus link)
-        const deleteCount = prevText ? 2 : 1;
-        const deleteIndex = prevText ? i - 1 : i;
+        const deleteCount = hasPrevTextNode ? 2 : 1;
+        const deleteIndex = hasPrevTextNode ? i - 1 : i;
         ch.splice(deleteIndex, deleteCount);
         // Reset i to just before anchor to continue scanning safely
         i = Math.max(0, deleteIndex - 1);
