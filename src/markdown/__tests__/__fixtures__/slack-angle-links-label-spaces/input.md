@@ -1,0 +1,9 @@
+Case A: <https://charlielabs.ai|Charlie Labs: AI TypeScript Engineer>
+
+Case B: Hello, see <https://ex.com|Alpha Beta> now.
+
+Case C: Two links in one line: <https://a.dev|A B> and <https://b.dev|C D>.
+
+Case D: Punctuation in label: <https://ex.com/docs|Alpha/Beta (Docs, v2)>
+
+Case E: Needs escaping in label: <https://ex.com|A & B > C < D | E>
