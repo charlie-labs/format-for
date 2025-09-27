@@ -201,4 +201,56 @@ describe('canonicalizer normalization paths (exercise branches)', () => {
       expect(links[1].children[0].value).toBe('Docs');
     }
   });
+
+  test('does not append an unrelated " <tag>" tail into a preceding link label just because the block contains a pipe elsewhere', () => {
+    // Paragraph shape (no Slack angle-link context):
+    // text("A | B See ") + [Ex](https://ex.com) + text(" <tag>")
+    // Prior behavior incorrectly appended " <tag" into the link label due to the
+    // broad fallback gate (blockText.includes('|')). This must remain as plain text.
+    const ast: Root = {
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: 'A | B See ' },
+            {
+              type: 'link',
+              url: 'https://ex.com',
+              title: null,
+              children: [{ type: 'text', value: 'Ex' }],
+            },
+            { type: 'text', value: ' <tag>' },
+          ],
+        },
+      ],
+    } as any;
+
+    const out = unified().use(remarkCanonicalizeMixed).runSync(ast) as Root;
+    const p = out.children[0];
+    expect(p && p.type === 'paragraph').toBe(true);
+    if (p && p.type === 'paragraph') {
+      // Ensure the preceding link label remains untouched
+      const link = p.children[1] as any;
+      expect(link.type).toBe('link');
+      expect(link.url).toBe('https://ex.com');
+      expect(link.children[0].value).toBe('Ex');
+      // And the tail content after the link remains separate (not merged into
+      // the link label): either as a single text node " <tag>" or as a space
+      // followed by a link produced from the inline angle form.
+      const tailNodes = p.children.slice(2) as any[];
+      const okAsText =
+        tailNodes.length === 1 &&
+        tailNodes[0].type === 'text' &&
+        tailNodes[0].value === ' <tag>';
+      const linkIdx = tailNodes.findIndex((n) => n.type === 'link');
+      const okAsAngleLink =
+        linkIdx > 0 &&
+        tailNodes[linkIdx - 1]?.type === 'text' &&
+        /\s$/.test(String(tailNodes[linkIdx - 1].value ?? '')) &&
+        tailNodes[linkIdx]?.children?.[0]?.value === 'tag' &&
+        tailNodes[linkIdx]?.url === 'tag';
+      expect(okAsText || okAsAngleLink).toBe(true);
+    }
+  });
 });

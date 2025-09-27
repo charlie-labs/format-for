@@ -289,12 +289,9 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
     //        trailing '>') to the link label. This addresses labels containing
     //        raw '<', '>' and '|' that confused the initial parse.
     const appendAngleTail = (parent: Parent): void => {
-      // Operate only on blocks that either participated in a merge,
-      // or clearly contain Slack-angle label syntax.
-      if (!slackAngleParents.has(parent)) {
-        const blockText = toString(parent);
-        if (!blockText.includes('|')) return;
-      }
+      // Only operate on blocks that participated in a Slack angle-link merge.
+      // This avoids corrupting unrelated content that merely contains a '|'.
+      if (!slackAngleParents.has(parent)) return;
       const ch = parent.children;
       for (let i = 0; i < ch.length - 1; i++) {
         const cur = ch[i];
@@ -304,7 +301,8 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
         const url = String(cur.url ?? '');
         if (!hasScheme(url)) continue;
         const t = String(next.value ?? '');
-        if (!/(?:^|\s)<[^>]*>$/.test(t)) continue;
+        // Require a Slack-style angle tail that contains a '|' inside the angle.
+        if (!/(?:^|\s)<[^>]*\|[^>]*>$/.test(t)) continue;
         const tail = t.replace(/>$/, '');
         const base = toString(cur);
         // Heuristic: if the base ends with a space and the tail contains a '<'
