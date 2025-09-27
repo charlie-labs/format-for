@@ -7,7 +7,9 @@ import {
   type Root,
   type Text,
 } from 'mdast';
+import { toString } from 'mdast-util-to-string';
 import { type Plugin } from 'unified';
+import { type Node as UnistNode } from 'unist';
 import { CONTINUE, visit } from 'unist-util-visit';
 
 import {
@@ -92,6 +94,191 @@ export const remarkCanonicalizeMixed: Plugin<[CanonicalizeOptions?], Root> = (
 
     // 1) Block-level: '+++ Title' ... '+++' → details (with nesting)
     canonicalizeDetailsInParent(root);
+
+    // 1.25) Merge Slack angle-link fragments split by remark around spaces in label.
+    // Pattern produced by remark-parse for inputs like:
+    //   "... <https://ex.com|Alpha Beta> ..."
+    // becomes siblings:
+    //   text("... <"), link(url:"https://ex.com", children:[text("Alpha")]), text(" Beta> ...")
+    // We want a single mdast link with the full label: children:[text("Alpha Beta")]
+    const mergeInParent = (parent: Parent): void => {
+      if (!Array.isArray(parent.children) || parent.children.length < 3) return;
+      for (let i = 0; i < parent.children.length - 2; i++) {
+        const a = parent.children[i];
+        const b = parent.children[i + 1];
+        const c = parent.children[i + 2];
+        if (!a || !b || !c) continue;
+        if (a.type !== 'text' || b.type !== 'link') continue;
+        const aVal = String(a.value ?? '');
+        // Only consider when the left text ends with a literal '<' (no trailing whitespace)
+        if (!aVal.endsWith('<')) continue;
+
+        const prefix = aVal.slice(0, -1); // text before '<'
+        const url = String(b.url ?? '');
+        if (!url) continue;
+
+        // Accumulate label fragments from the initial link and following siblings
+        let labelBuf = toString(b);
+        let j = i + 2;
+        let after = '';
+        let foundClose = false;
+        for (; j < parent.children.length; j++) {
+          const cur = parent.children[j];
+          if (!cur) break;
+          if (cur.type === 'text') {
+            const t = String(cur.value ?? '');
+            const k = t.indexOf('>');
+            if (k !== -1) {
+              // Heuristic: if there is another '<' ahead (in the remainder of this
+              // text or in later siblings), treat this '>' as literal label content
+              // and keep scanning; otherwise, close here.
+              const restThis = t.slice(k + 1);
+              // (previously checked for another '<' in later siblings; no-op now)
+              // Note: even if another '<' exists later, we still close here and
+              // rely on a follow-up pass (appendAngleTail) to append any trailing
+              // fragment back to the label. This avoids over-consuming when there
+              // are multiple independent angle links in the same paragraph.
+              // include text up to '>' in the label; keep the tail as `after`
+              labelBuf += t.slice(0, k);
+              after = restThis;
+              foundClose = true;
+              break;
+            }
+            labelBuf += t;
+            continue;
+          }
+          // For any non-text node (including nested links/emphasis),
+          // append its human-readable text content into the label.
+          labelBuf += toString(cur as UnistNode);
+        }
+
+        if (!foundClose) continue; // give up if we never saw a closing '>'
+
+        // Create the compact replacement nodes
+        const linkNode: Link = {
+          type: 'link',
+          url,
+          title: null,
+          children: [{ type: 'text', value: labelBuf }],
+        };
+        const replacement: (Text | Link)[] = [];
+        if (prefix) replacement.push({ type: 'text', value: prefix });
+        replacement.push(linkNode);
+        if (after) replacement.push({ type: 'text', value: after });
+
+        // Replace the range [i..j] (inclusive) with the compact sequence
+        parent.children.splice(i, j - i + 1, ...replacement);
+
+        // Advance to the next starting position without skipping a potential
+        // immediately-following pattern (e.g., two angle links in one line).
+        i += Math.max(0, replacement.length - 2);
+      }
+    };
+    visit(root, 'paragraph', (node: Parent) => {
+      mergeInParent(node);
+      return CONTINUE;
+    });
+    visit(root, 'heading', (node: Parent) => {
+      mergeInParent(node);
+      return CONTINUE;
+    });
+
+    // 1.3) Merge dangling label fragments that remark sometimes turns into a
+    //      bogus `link` with a non-URL `url` (e.g., from sequences like
+    //      "... > C < D | E>" when inside a Slack angle-link label). When we
+    //      see a `link` whose url lacks a scheme, treat it as plain text and
+    //      append it (plus any immediately-preceding text) to the previous
+    //      proper link's label.
+    const hasScheme = (u: string): boolean =>
+      /^(?:[a-z][a-z0-9+.-]*:)/i.test(u);
+    const appendToPrevLink = (parent: Parent): void => {
+      const ch = parent.children;
+      for (let i = 0; i < ch.length; i++) {
+        const cur = ch[i];
+        if (!cur || cur.type !== 'link') continue;
+        const url = String(cur.url ?? '');
+        if (hasScheme(url)) continue; // only handle dangling/non-URL links
+        // Find previous proper link to attach to
+        let anchor = -1;
+        for (let j = i - 1; j >= 0; j--) {
+          const prev = ch[j];
+          if (
+            prev &&
+            prev.type === 'link' &&
+            hasScheme(String(prev.url ?? ''))
+          ) {
+            anchor = j;
+            break;
+          }
+        }
+        if (anchor === -1) continue;
+        const prevText =
+          i > 0 && ch[i - 1]?.type === 'text'
+            ? String((ch[i - 1] as Text).value ?? '')
+            : '';
+        const curText = toString(cur);
+        const anchorLink = ch[anchor] as Link;
+        const anchorLabel = toString(anchorLink);
+        const combined = anchorLabel + prevText + curText;
+
+        anchorLink.children = [{ type: 'text', value: combined }];
+        // Remove the consumed nodes (optional preceding text + current bogus link)
+        const deleteCount = prevText ? 2 : 1;
+        const deleteIndex = prevText ? i - 1 : i;
+        ch.splice(deleteIndex, deleteCount);
+        // Reset i to just before anchor to continue scanning safely
+        i = Math.max(0, deleteIndex - 1);
+      }
+    };
+    visit(root, 'paragraph', (node: Parent) => {
+      appendToPrevLink(node);
+      return CONTINUE;
+    });
+    visit(root, 'heading', (node: Parent) => {
+      appendToPrevLink(node);
+      return CONTINUE;
+    });
+
+    // 1.35) If a proper link is followed by text that looks like a leftover
+    //        Slack-angle tail (e.g., " C < D | E>"), append that text (minus the
+    //        trailing '>') to the link label. This addresses labels containing
+    //        raw '<', '>' and '|' that confused the initial parse.
+    const appendAngleTail = (parent: Parent): void => {
+      const ch = parent.children;
+      for (let i = 0; i < ch.length - 1; i++) {
+        const cur = ch[i];
+        const next = ch[i + 1];
+        if (!cur || !next) continue;
+        if (cur.type !== 'link' || next.type !== 'text') continue;
+        const url = String(cur.url ?? '');
+        if (!hasScheme(url)) continue;
+        const t = String(next.value ?? '');
+        if (!/(?:^|\s)<[^>]*>$/.test(t)) continue;
+        const tail = t.replace(/>$/, '');
+        const base = toString(cur);
+        // Heuristic: if the base ends with a space and the tail contains a '<'
+        // (indicating we likely split on a literal '>' inside the label), reinsert
+        // a '>' between base and tail to preserve "… > …" from the original.
+        const injectedTail =
+          base.endsWith(' ') && tail.includes('<') && !tail.startsWith('>')
+            ? '>' + tail
+            : tail;
+        const label = base + injectedTail;
+        cur.children = [{ type: 'text', value: label }];
+        // Remove the consumed text node
+        ch.splice(i + 1, 1);
+        // step back one index to re-check for cascaded tails
+        i = Math.max(0, i - 1);
+      }
+    };
+    visit(root, 'paragraph', (node: Parent) => {
+      appendAngleTail(node);
+      return CONTINUE;
+    });
+    visit(root, 'heading', (node: Parent) => {
+      appendAngleTail(node);
+      return CONTINUE;
+    });
 
     // 1.5) Convert Slack specials (and defensively, other Slack angle forms) that
     // were parsed as `html` nodes into canonical `mention` nodes so renderers can
