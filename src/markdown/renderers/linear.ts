@@ -99,6 +99,17 @@ export function renderLinear(
     (node: Html, index: number | undefined, parent: Parent | undefined) => {
       if (!node || !parent || typeof index !== 'number') return;
       const v = String(node.value);
+      // Heuristic: treat angle‑bracket "placeholders" like `<PR_NUMBER>` or
+      // `<service-host>` as literal text, not HTML. remark parses these as
+      // `html` nodes, but Linear would otherwise drop them as disallowed HTML
+      // which causes data loss in prose. We only apply this when the token is
+      // a single tag‑like chunk without attributes and with characters that are
+      // atypical for real HTML tag names (uppercase letters, digits, `_` or
+      // `-`).
+      if (parent.type === 'paragraph' && isAnglePlaceholder(v)) {
+        parent.children.splice(index, 1, { type: 'text', value: v });
+        return [SKIP, index];
+      }
       const tags = extractHtmlTags(v);
       const isCommentOrWs = isHtmlCommentOrWhitespace(v);
       // If inside a paragraph with no real tags and not a comment/whitespace, drop just this HTML node (e.g., '<!here>').
@@ -235,3 +246,27 @@ function closingTagName(s: string): string | null {
 }
 
 // shared util imported
+
+// ——— helpers ———
+
+// Detect single angle‑bracket placeholders like `<PR_NUMBER>` or `<service-host>`.
+// Conditions:
+//  - The value consists of exactly one tag‑like token with no attributes
+//  - The name contains chars uncommon for real HTML tags (uppercase, digits, '_' or '-')
+//  - Not a closing tag/comment/processing instruction
+function isAnglePlaceholder(s: string): boolean {
+  const t = String(s).trim();
+  // Reject closing tags / comments / processing instructions fast
+  if (t.startsWith('</') || t.startsWith('<!--') || t.startsWith('<?')) {
+    return false;
+  }
+  // Accept exactly one non-whitespace, non-`/` token between '<' and '>'
+  const m = /^<\s*([^\s/>]+)\s*>$/.exec(t);
+  if (!m) return false;
+  const name = m[1] ?? '';
+  // Placeholder if it includes uncommon characters or uppercase letters
+  if (/[A-Z]/.test(name)) return true;
+  if (/[0-9_\-]/.test(name)) return true;
+  // Otherwise, likely a real HTML tag like <div>, <video>, etc.
+  return false;
+}
