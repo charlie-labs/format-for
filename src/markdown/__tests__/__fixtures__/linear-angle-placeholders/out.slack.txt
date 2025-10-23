@@ -1,0 +1,2 @@
+PR “Preview” links point at the tag subdomain (pr<PR_NUMBER|PR_NUMBER>---&lt;service-host&gt;) instead of the host.
+
