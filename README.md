@@ -3,6 +3,8 @@
 [![CI](https://github.com/charlie-labs/format-for/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/charlie-labs/format-for/actions/workflows/ci.yml)
 [![Bun](https://img.shields.io/badge/bun-1.x-000)](https://bun.sh)
 
+> **Migration notice:** The code and development for `format-for` moved to [`charlie-labs/charlie-system`](https://github.com/charlie-labs/charlie-system/tree/master/packages/format-for).
+
 One Markdown input → clean output for GitHub, Slack, or Linear.
 
 You don’t need to know the input’s dialect. Pass Markdown that might mix Linear fences, Slack `<url|label>` links/mentions, and GFM. format‑for parses once and renders target‑aware output with predictable, safe degradations and explicit warnings.
